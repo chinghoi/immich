@@ -69,4 +69,20 @@ void main() {
     );
     expect(refreshed, isTrue);
   });
+
+  test('SDK startup failure keeps recovery UI reachable with native fail-closed transport', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      TailnetSession.channel,
+      (_) async => throw PlatformException(code: 'TAILNET_UNAVAILABLE'),
+    );
+    await TailnetSession.prepare();
+  });
+
+  test('unknown bridge failures are not silently swallowed', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      TailnetSession.channel,
+      (_) async => throw PlatformException(code: 'BRIDGE_BROKEN'),
+    );
+    await expectLater(TailnetSession.prepare(), throwsA(isA<PlatformException>()));
+  });
 }

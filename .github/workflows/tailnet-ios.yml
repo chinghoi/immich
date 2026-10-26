@@ -68,11 +68,15 @@ jobs:
         timeout-minutes: 20
         run: bash custom/ios-tailnet/test-simulator.sh
       - name: Build simulator app (no signing)
+        id: simulator-build
+        if: always() && steps.mobile-dependencies.outcome == 'success'
         working-directory: mobile
         run: |
           set -o pipefail
           flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
       - name: Build device app (unsigned, cannot install directly)
+        id: device-build
+        if: always() && steps.mobile-dependencies.outcome == 'success'
         working-directory: mobile
         run: |
           set -o pipefail

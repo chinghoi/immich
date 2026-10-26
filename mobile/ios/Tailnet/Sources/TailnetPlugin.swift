@@ -37,8 +37,11 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
       lock.lock()
       proxy = value
       lock.unlock()
-      rebuildSession?()
-      NotificationCenter.default.post(name: transportChanged, object: nil)
+      if let rebuildSession {
+        rebuildSession()
+      } else {
+        NotificationCenter.default.post(name: transportChanged, object: nil)
+      }
     }
   }
 
@@ -66,7 +69,9 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
       let previous = Self.previousPath
       Self.previousPath = signature
       guard previous != nil, previous != signature, path.status == .satisfied, Self.isEnabled else { return }
-      Task { try? await Self.controller.reconnect() }
+      // The SDK handles path changes. Preserve active sessions unless iOS has
+      // actually reclaimed their local listener; avoid restarting every socket.
+      Task { try? await Self.controller.checkLoopback() }
     }
     monitor.start(queue: DispatchQueue(label: "immich.tailnet.path"))
   }
@@ -250,7 +255,8 @@ private actor TailnetController {
     upTask = nil
     if let old {
       if forgetIdentity { _ = try? await localRequest(old, endpoint: "logout", method: "POST", timeout: 5) }
-      try await old.close()
+      // Clear the transport even if an already-closed SDK handle reports an error.
+      try? await old.close()
     }
     await TailnetPlugin.install(nil)
     if forgetIdentity { try FileManager.default.removeItem(at: stateDirectory()) }

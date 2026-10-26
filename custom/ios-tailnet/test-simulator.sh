@@ -15,7 +15,9 @@ p.write_text(s.replace('func main() {}','func unusedMain() {}'))
 PY
 cp custom/ios-tailnet/tests/fixture.go "$temp_dir/libtailscale/tstestcontrol/fixture.go"
 (cd "$temp_dir/libtailscale" && go build -o "$temp_dir/fixture" ./tstestcontrol)
-"$temp_dir/fixture" "$temp_dir/fixture.json" > "$RUNNER_TEMP/tailnet-fixture.log" 2>&1 &
+ffmpeg -loglevel error -nostdin -f lavfi -i 'testsrc=size=160x90:rate=5' \
+  -t 12 -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$temp_dir/video.mp4"
+"$temp_dir/fixture" "$temp_dir/fixture.json" "$temp_dir/video.mp4" > "$RUNNER_TEMP/tailnet-fixture.log" 2>&1 &
 fixture_pid=$!
 for attempt in {1..60}; do [[ ! -f "$temp_dir/fixture.json" ]] || break; kill -0 "$fixture_pid"; sleep 1; done
 test -s "$temp_dir/fixture.json"

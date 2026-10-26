@@ -2,6 +2,7 @@ import XCTest
 import TailscaleKit
 import Foundation
 import Security
+import AVFoundation
 
 /// Runs on an iOS SIMULATOR, against a disposable control server on the runner.
 /// The fixture certificate is pinned only in this test; production trust stays default.
@@ -83,6 +84,30 @@ final class TransportTests: XCTestCase {
     let (videoData, videoResponse) = try await URLSession.shared.data(for: video)
     XCTAssertEqual((videoResponse as? HTTPURLResponse)?.statusCode, 206)
     XCTAssertEqual(videoData, Data((2048...4095).map { UInt8($0 % 251) }))
+    // Exercise AVFoundation against a real MP4 through the dependency's proxy,
+    // including a seek and clock advancement, rather than asserting Range alone.
+    let movieURL = try XCTUnwrap(VideoProxyServer.shared.proxyURL(for: URL(string: target + "/api/assets/video")!))
+    let movie = AVURLAsset(url: movieURL)
+    let playable = try await movie.load(.isPlayable)
+    XCTAssertTrue(playable)
+    let player = AVPlayer(playerItem: AVPlayerItem(asset: movie))
+    player.isMuted = true
+    for _ in 0..<100 {
+      if player.currentItem?.status != .unknown { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    XCTAssertEqual(player.currentItem?.status, .readyToPlay)
+    let seeked = await player.seek(to: CMTime(seconds: 7, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    XCTAssertTrue(seeked)
+    let initialTime = player.currentTime().seconds
+    player.play()
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+    XCTAssertGreaterThan(player.currentTime().seconds, initialTime + 0.2)
+    player.pause()
+    player.replaceCurrentItem(with: nil)
+    let (statsData, _) = try await session.data(for: authorized(target + "/api/video-stats"))
+    let stats = try JSONDecoder().decode([String: Int].self, from: statsData)
+    XCTAssertGreaterThan(stats["ranges"] ?? 0, 0)
     VideoProxyServer.shared.session = nil
 
     let slow = Task { try await session.data(for: authorized(target + "/api/slow")) }
@@ -99,7 +124,10 @@ final class TransportTests: XCTestCase {
     XCTAssertEqual(firstIPs.ip4, restoredIPs.ip4)
     let (restoredConfiguration, _) = try await URLSessionConfiguration.tailscaleSession(restored)
     let restoredSession = URLSession(configuration: restoredConfiguration)
-    let (afterReconnect, _) = try await restoredSession.data(for: authorized(target + "/api/assets/original"))
+    // Up restores identity before every peer has learned the fresh endpoints.
+    // Retry only this idempotent acceptance probe, for at most ~44 seconds.
+    // This is not a production retry of arbitrary requests or POST bodies.
+    let afterReconnect = try await recoveredData(authorized(target + "/api/assets/original"), session: restoredSession)
     XCTAssertEqual(afterReconnect.count, 8192)
     restoredSession.invalidateAndCancel()
     try await restored.close()
@@ -115,6 +143,20 @@ final class TransportTests: XCTestCase {
     var request = URLRequest(url: URL(string: address)!)
     request.setValue("Bearer fixture-only", forHTTPHeaderField: "Authorization")
     return request
+  }
+
+  private func recoveredData(_ request: URLRequest, session: URLSession) async throws -> Data {
+    for attempt in 1...8 {
+      do {
+        let (data, response) = try await session.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        return data
+      } catch let error as URLError {
+        guard [.badURL, .cannotConnectToHost, .networkConnectionLost, .timedOut].contains(error.code), attempt < 8 else { throw error }
+        try await Task.sleep(nanoseconds: 500_000_000)
+      }
+    }
+    throw URLError(.cannotConnectToHost)
   }
 }
 

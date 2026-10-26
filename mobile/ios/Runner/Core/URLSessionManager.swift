@@ -84,6 +84,7 @@ class URLSessionManager: NSObject {
     session = Self.buildSession(delegate: delegate)
     previous.invalidateAndCancel()
     VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? session : nil
+    NotificationCenter.default.post(name: TailnetPlugin.transportChanged, object: nil)
   }
 
   static func setServerUrls(_ urls: [String]) {

@@ -14,7 +14,12 @@ class NetworkRepository {
   static final http.Client _forwardingClient = _CurrentSessionClient();
   static Future<void>? _initializing;
 
-  static Future<void> init() => _initializing ??= _initialize().whenComplete(() => _initializing = null);
+  static Future<void> init() {
+    if (!Platform.isIOS) {
+      return _initialize();
+    }
+    return _initializing ??= _initialize().whenComplete(() => _initializing = null);
+  }
 
   static Future<void> _initialize() async {
     if (Platform.isIOS) {
@@ -65,7 +70,7 @@ class NetworkRepository {
   /// On Android: Uses SharedHttpClientManager's OkHttpClient.
   ///
   /// Must call [init] before using this method.
-  static http.Client get client => _forwardingClient;
+  static http.Client get client => Platform.isIOS ? _forwardingClient : _client!;
 }
 
 /// ApiService and uploads can retain this object across a native session change.

@@ -23,6 +23,7 @@ import (
  "net/http/httptest"
  "os"
  "strings"
+ "sync/atomic"
  "time"
  "unsafe"
 
@@ -32,7 +33,7 @@ import (
 )
 
 func main() {
- if len(os.Args) != 2 { panic("output JSON path required") }
+ if len(os.Args) != 3 { panic("output JSON and video paths required") }
  buffer := make([]byte, 4096)
  if RunControl((*C.char)(unsafe.Pointer(&buffer[0])), C.size_t(len(buffer))) != 0 { panic("control failed") }
  controlURL := strings.TrimRight(string(buffer), "\x00")
@@ -44,6 +45,7 @@ func main() {
  ip := status.TailscaleIPs[0].String()
  payload := make([]byte, 8192)
  for i := range payload { payload[i] = byte(i % 251) }
+ var videoRanges atomic.Int64
  handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
    if r.URL.Path == "/api/auth/login" {
      if r.Method != "POST" { http.Error(w,"method",405); return }
@@ -57,6 +59,11 @@ func main() {
    switch r.URL.Path {
    case "/api/assets/thumbnail", "/api/assets/original":
      http.ServeContent(w,r,"fixture.bin",time.Unix(0,0),bytes.NewReader(payload))
+   case "/api/assets/video":
+     if r.Header.Get("Range")!="" { videoRanges.Add(1) }
+     http.ServeFile(w,r,os.Args[2])
+   case "/api/video-stats":
+     w.Header().Set("Content-Type","application/json"); fmt.Fprintf(w,`{"ranges":%d}`,videoRanges.Load())
    case "/api/assets":
      must(r.ParseMultipartForm(1024*1024)); defer r.MultipartForm.RemoveAll()
      f,_,err := r.FormFile("assetData"); if err != nil { http.Error(w,"multipart",400); return }; defer f.Close()

@@ -21,7 +21,15 @@ class TailnetSession {
         }
       });
     }
-    await channel.invokeMethod<void>('prepare');
+    try {
+      await channel.invokeMethod<void>('prepare');
+    } on PlatformException catch (error) {
+      // Native transport remains fail-closed. Keep the UI reachable so the user
+      // can disable/reconnect instead of getting stuck at bootstrap forever.
+      if (error.code != 'TAILNET_UNAVAILABLE') {
+        rethrow;
+      }
+    }
   }
 
   static Future<bool> get enabled async =>

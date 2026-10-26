@@ -82,6 +82,15 @@ class _TailnetSettingsState extends State<TailnetSettings> {
       return const SizedBox.shrink();
     }
     final enabled = _status['enabled'] == true;
+    final nodeState = switch (_status['state']) {
+      'Running' => '已连接',
+      'NeedsLogin' => '等待授权',
+      'NeedsMachineAuth' => '等待管理员批准',
+      'Disabled' => '未启用',
+      'Unavailable' => '连接不可用',
+      'Stopped' => '已断开',
+      _ => '连接中',
+    };
     final authURL = Uri.tryParse(_status['authURL'] as String? ?? '');
     final canAuthorize =
         authURL != null &&
@@ -96,7 +105,7 @@ class _TailnetSettingsState extends State<TailnetSettings> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('内嵌 Tailscale（iOS 18.1+）'),
-              subtitle: Text('状态：${_status['state']} · 不占用系统 VPN'),
+              subtitle: Text('节点：$nodeState · 不占用系统 VPN'),
               value: enabled,
               onChanged: _busy ? null : (value) => unawaited(_action(value ? 'enable' : 'disable')),
             ),
