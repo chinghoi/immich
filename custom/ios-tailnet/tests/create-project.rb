@@ -21,6 +21,16 @@ target.build_configurations.each do |configuration|
     'TEST_HOST' => '', 'ENABLE_TESTABILITY' => 'YES'
   })
 end
+Xcodeproj::Plist.write_to_path({
+  'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
+  'CFBundlePackageType' => 'BNDL', 'CFBundleName' => '$(PRODUCT_NAME)',
+  'CFBundleExecutable' => '$(EXECUTABLE_NAME)',
+  'NSAppTransportSecurity' => { 'NSAllowsArbitraryLoads' => true }
+}, out.join('Test-Info.plist'))
+target.build_configurations.each do |configuration|
+  configuration.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
+  configuration.build_settings['INFOPLIST_FILE'] = out.join('Test-Info.plist').to_s
+end
 project.save
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(target)

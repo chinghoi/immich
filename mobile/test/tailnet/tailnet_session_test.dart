@@ -12,29 +12,28 @@ void main() {
     calls.clear();
     enabled = false;
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(TailnetSession.channel, (call) async {
-          calls.add(call.method);
-          if (call.method == 'enabled') return enabled;
-          if (call.method == 'status')
-            return {'enabled': enabled, 'state': 'NeedsLogin'};
-          return null;
-        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(TailnetSession.channel, (
+      call,
+    ) async {
+      calls.add(call.method);
+      if (call.method == 'enabled') return enabled;
+      if (call.method == 'status') return {'enabled': enabled, 'state': 'NeedsLogin'};
+      return null;
+    });
   });
 
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     TailnetSession.onTransportChanged = null;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(TailnetSession.channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      TailnetSession.channel,
+      null,
+    );
   });
 
   test('system background queue is rejected even before tailnet authorization completes', () async {
     enabled = true;
-    await expectLater(
-      TailnetSession.requireSystemBackgroundTransport(),
-      throwsStateError,
-    );
+    await expectLater(TailnetSession.requireSystemBackgroundTransport(), throwsStateError);
     expect(calls, ['enabled']);
   });
 
@@ -50,14 +49,11 @@ void main() {
     expect(calls, isEmpty);
   });
 
-  test(
-    'authorization status can be displayed without exposing proxy secrets',
-    () async {
-      enabled = true;
-      final status = await TailnetSession.status();
-      expect(status, {'enabled': true, 'state': 'NeedsLogin'});
-    },
-  );
+  test('authorization status can be displayed without exposing proxy secrets', () async {
+    enabled = true;
+    final status = await TailnetSession.status();
+    expect(status, {'enabled': true, 'state': 'NeedsLogin'});
+  });
 
   test('native reconnect notifies the cached HTTP session owner', () async {
     var refreshed = false;
@@ -65,11 +61,12 @@ void main() {
       refreshed = true;
     };
     await TailnetSession.prepare();
-    final message = const StandardMethodCodec().encodeMethodCall(
-      const MethodCall('transportChanged'),
+    final message = const StandardMethodCodec().encodeMethodCall(const MethodCall('transportChanged'));
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
+      'app.immich/tailnet',
+      message,
+      (_) {},
     );
-    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .handlePlatformMessage('app.immich/tailnet', message, (_) {});
     expect(refreshed, isTrue);
   });
 }

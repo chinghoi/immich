@@ -24,10 +24,7 @@ class _TailnetSettingsState extends State<TailnetSettings> {
     super.initState();
     if (Platform.isIOS) {
       unawaited(_refresh());
-      _timer = Timer.periodic(
-        const Duration(seconds: 3),
-        (_) => unawaited(_refresh()),
-      );
+      _timer = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(_refresh()));
     }
   }
 
@@ -40,9 +37,22 @@ class _TailnetSettingsState extends State<TailnetSettings> {
   Future<void> _refresh() async {
     try {
       final status = await TailnetSession.status();
-      if (mounted) setState(() => _status = status);
+      if (mounted) {
+        setState(() {
+          _status = status;
+          _error = null;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = '连接不可用，请重连或重新授权。');
+      if (mounted) {
+        final enabled = await TailnetSession.enabled;
+        if (mounted) {
+          setState(() {
+            _status = {'enabled': enabled, 'state': 'Unavailable'};
+            _error = '连接不可用，请重连或重新授权。';
+          });
+        }
+      }
     }
   }
 
@@ -56,22 +66,27 @@ class _TailnetSettingsState extends State<TailnetSettings> {
       await NetworkRepository.init();
       await _refresh();
     } catch (_) {
-      if (mounted) setState(() => _error = '操作未完成，请重连后重试。');
+      if (mounted) {
+        setState(() => _error = '操作未完成，请重连后重试。');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isIOS) return const SizedBox.shrink();
+    if (!Platform.isIOS) {
+      return const SizedBox.shrink();
+    }
     final enabled = _status['enabled'] == true;
     final authURL = Uri.tryParse(_status['authURL'] as String? ?? '');
     final canAuthorize =
         authURL != null &&
         authURL.scheme == 'https' &&
-        (authURL.host == 'login.tailscale.com' ||
-            authURL.host.endsWith('.tailscale.com'));
+        (authURL.host == 'login.tailscale.com' || authURL.host.endsWith('.tailscale.com'));
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -83,51 +98,28 @@ class _TailnetSettingsState extends State<TailnetSettings> {
               title: const Text('内嵌 Tailscale（iOS 18.1+）'),
               subtitle: Text('状态：${_status['state']} · 不占用系统 VPN'),
               value: enabled,
-              onChanged: _busy
-                  ? null
-                  : (value) => unawaited(_action(value ? 'enable' : 'disable')),
+              onChanged: _busy ? null : (value) => unawaited(_action(value ? 'enable' : 'disable')),
             ),
             if (enabled) ...[
-              const Text(
-                '服务器地址填写家中 Immich 的 tailnet 地址。前台可备份；退到后台会暂停，回到前台继续。后台自动备份和桌面小组件无法使用此隧道。',
-              ),
+              const Text('服务器地址填写家中 Immich 的 tailnet 地址。前台可备份；退到后台会暂停，回到前台继续。后台自动备份和桌面小组件无法使用此隧道。'),
               Wrap(
                 spacing: 8,
                 children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => unawaited(_action('login')),
-                    child: const Text('请求授权'),
-                  ),
+                  TextButton(onPressed: _busy ? null : () => unawaited(_action('login')), child: const Text('请求授权')),
                   if (canAuthorize)
                     TextButton(
-                      onPressed: () => unawaited(
-                        launchUrl(
-                          authURL,
-                          mode: LaunchMode.externalApplication,
-                        ),
-                      ),
+                      onPressed: () => unawaited(launchUrl(authURL, mode: LaunchMode.externalApplication)),
                       child: const Text('打开 Tailscale 授权网页'),
                     ),
+                  TextButton(onPressed: _busy ? null : () => unawaited(_action('reconnect')), child: const Text('重连')),
                   TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => unawaited(_action('reconnect')),
-                    child: const Text('重连'),
-                  ),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => unawaited(_action('logout')),
+                    onPressed: _busy ? null : () => unawaited(_action('logout')),
                     child: const Text('退出并清除节点身份'),
                   ),
                 ],
               ),
             ],
-            if (_error != null)
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+            if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
         ),
       ),

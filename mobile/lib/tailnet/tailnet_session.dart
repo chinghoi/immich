@@ -10,26 +10,27 @@ class TailnetSession {
   static Future<void> Function()? onTransportChanged;
 
   static Future<void> prepare() async {
-    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return;
+    }
     if (!_listening) {
       _listening = true;
       channel.setMethodCallHandler((call) async {
-        if (call.method == 'transportChanged') await onTransportChanged?.call();
+        if (call.method == 'transportChanged') {
+          await onTransportChanged?.call();
+        }
       });
     }
     await channel.invokeMethod<void>('prepare');
   }
 
   static Future<bool> get enabled async =>
-      defaultTargetPlatform == TargetPlatform.iOS &&
-      (await channel.invokeMethod<bool>('enabled') ?? false);
+      defaultTargetPlatform == TargetPlatform.iOS && (await channel.invokeMethod<bool>('enabled') ?? false);
 
   static Future<Map<String, dynamic>> status() async =>
-      await channel.invokeMapMethod<String, dynamic>('status') ??
-      {'enabled': false, 'state': 'Disabled'};
+      await channel.invokeMapMethod<String, dynamic>('status') ?? {'enabled': false, 'state': 'Disabled'};
 
-  static Future<void> action(String action) =>
-      channel.invokeMethod<void>(action);
+  static Future<void> action(String action) => channel.invokeMethod<void>(action);
 
   static Future<void> requireSystemBackgroundTransport() async {
     if (await enabled) {

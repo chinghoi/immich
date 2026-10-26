@@ -134,6 +134,11 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
 
 private enum TailnetFailure: Error { case disabled, invalidState }
 
+private struct SilentTailnetLogger: LogSink {
+  let logFileHandle: Int32? = -1 // libtailscale explicitly maps -1 to logger.Discard
+  func log(_ message: String) {}
+}
+
 private actor TailnetController {
   private var node: TailscaleNode?
   private var upTask: Task<Void, Never>?
@@ -171,7 +176,7 @@ private actor TailnetController {
     if node == nil {
       let config = Configuration(hostName: "immich-ios", path: try stateDirectory().path,
                                  authKey: nil, controlURL: kDefaultControlURL, ephemeral: false)
-      let created = try TailscaleNode(config: config, logger: nil)
+      let created = try TailscaleNode(config: config, logger: SilentTailnetLogger())
       node = created
       // up() waits for authorization. Do not block the UI or the login screen.
       upTask = Task { try? await created.up() }
