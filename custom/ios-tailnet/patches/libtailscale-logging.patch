@@ -1,0 +1,11 @@
+--- a/tailscale.go
++++ b/tailscale.go
+@@ -584,6 +584,8 @@
+ 	}
+ 	if fd == -1 {
+ 		s.s.Logf = logger.Discard
++		// Auth URLs are emitted by UserLogf, independently of backend Logf.
++		s.s.UserLogf = logger.Discard
+ 		return 0
+ 	}
+ 	f := os.NewFile(uintptr(fd), "logfd")

@@ -2,6 +2,10 @@
 set -euo pipefail
 test "$GITHUB_REPOSITORY" = chinghoi/immich
 repo=$GITHUB_REPOSITORY
+if [[ ${TAILNET_WORKFLOW_WRITE:-false} != true ]]; then
+  echo 'Exact-SHA promotion is delegated to the authorized maintenance task; native GitHub promotion needs TAILNET_SYNC_TOKEN with workflows write permission.' >> "$GITHUB_STEP_SUMMARY"
+  exit 0
+fi
 gh api "repos/$repo/actions/runs/$RUN_ID" > /tmp/tailnet-run.json
 python3 - <<'PY'
 import json,os,re

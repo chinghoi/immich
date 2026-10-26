@@ -9,8 +9,8 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/services/background_upload.service.dart';
-import 'package:immich_mobile/tailnet/tailnet_session.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
+import 'package:immich_mobile/tailnet/tailnet_session.dart';
 import 'package:immich_mobile/utils/upload_speed_calculator.dart';
 import 'package:logging/logging.dart';
 

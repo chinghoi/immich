@@ -7,6 +7,7 @@ trap '[[ -z "$fixture_pid" ]] || kill "$fixture_pid" 2>/dev/null || true' EXIT
 commit=$(python3 -c 'import json; print(json.load(open("custom/ios-tailnet/dependencies.json"))["libtailscaleCommit"])')
 git clone --no-checkout --filter=blob:none https://github.com/tailscale/libtailscale.git "$temp_dir/libtailscale"
 git -C "$temp_dir/libtailscale" checkout "$commit"
+(cd "$temp_dir/libtailscale" && patch --batch -p1 -i "$root/custom/ios-tailnet/patches/libtailscale-logging.patch")
 python3 - "$temp_dir/libtailscale/tstestcontrol/tstestcontrol.go" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]);s=p.read_text();assert 'func main() {}' in s
@@ -33,4 +34,5 @@ set -o pipefail
 xcodebuild test -project "$temp_dir/TailnetTransport.xcodeproj" -scheme TailnetTransport \
   -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$temp_dir/DerivedData" \
   -resultBundlePath "$RUNNER_TEMP/tailnet-transport.xcresult" CODE_SIGNING_ALLOWED=NO \
+  -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 \
   2>&1 | tee "$RUNNER_TEMP/tailnet-transport.log"

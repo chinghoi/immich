@@ -26,15 +26,17 @@
 
 `dependencies.json` 固定 libtailscale `d1dc45d039edb7759ecbee6ba2aea0c4bca884b8`、Go `1.27.1` 及上游基线。该提交的 Swift 源码是 API 的依据：`tailscaleSession` 返回配置与 loopback 信息的元组；使用 `kDefaultControlURL`。README 的早期示例与当前 API 有差异，不照抄示例。
 
-`mobile/pubspec.lock` 及官方 mise 锁文件继续生效。两个依赖适配补丁在 `flutter pub get --enforce-lockfile` 后统一应用；脚本验证下载器版本 `9.5.6`、视频依赖提交 `cdf621bdb7edaf996e118a58a48f6441187d79c6` 和补丁上下文。版本或上下文变化会使 CI 失败，必须人工复核，不自动猜测新 API。
+`mobile/pubspec.lock` 及官方 mise 锁文件继续生效。两个业务插件适配补丁在 `flutter pub get --enforce-lockfile` 后统一应用；脚本验证下载器版本 `9.5.6`、视频依赖提交 `cdf621bdb7edaf996e118a58a48f6441187d79c6` 和补丁上下文。版本或上下文变化会使 CI 失败，必须人工复核，不自动猜测新 API。
 
-节点使用交互式网页授权，`authKey` 永远为 nil。没有共用密钥、Apple ID、证书或 Profile 入库。身份只放在本 App 私有的 Application Support/ImmichTailnet，目录权限 0700，启用 iOS Data Protection（首次解锁后可访问），排除设备备份；不放共享 App Group。Go 和 Swift 的运行日志静默，loopback 密码不跨 Flutter、不写日志。
+节点使用交互式网页授权，`authKey` 永远为 nil。没有共用密钥、Apple ID、证书或 Profile 入库。身份只放在本 App 私有的 Application Support/ImmichTailnet，目录权限 0700，启用 iOS Data Protection（首次解锁后可访问），排除设备备份；不放共享 App Group。SDK 另有一个隔离的日志补丁：logfd=-1 时同时关闭 UserLogf，防止授权 URL 仍进入控制台。Go 和 Swift 的本机运行日志静默，loopback 密码不跨 Flutter、不写日志。
 
 关闭入口保留身份；“退出并清除节点身份”尝试 LocalAPI logout 后关闭节点、清除私有目录。若设备离线导致服务端注销未完成，仍需在 Tailscale 管理后台删除遗留设备。重连复用同一目录。当前固定 SDK 的 `down()` 源码行为不符合其注释，因此本模块不用它，使用 `close()` 重建。
 
 节点启动或重连期间采用拒绝连接的本机代理配置，避免悄悄切回直连。视频转发器仅监听 127.0.0.1，路径需要进程随机令牌。无新的 VPN、定位、音频或其它后台权限；已有 Immich 权限不是 Tailscale 的新增需求。
 
 ## 使用与后台限制
+
+登录/API 的目标是 App 内密码登录；系统浏览器的 OAuth 流程不能继承进程内隧道，如果 OAuth 回跳必须访问私有 Immich 地址，当前未接入此路径，不能声称支持。外部投屏设备同样不会继承此隧道。
 
 在登录页或设置的网络页面开启内嵌 Tailscale，点击“请求授权”，再打开授权网页。返回 Immich 后，节点状态应变为 Running。服务器地址仍填写家中的 tailnet HTTP/HTTPS 地址；ACL 必须允许这个 App 节点访问 Immich 端口。不要填写 Funnel 公网地址，也不需要另装 Tailscale App。
 
@@ -54,7 +56,7 @@ Apple 的后台 URLSession 会在系统进程执行；App 内代理没有同等�
 
 ## 全云端构建与验证
 
-开发目录、Flutter/Go/Java 依赖和临时测试只存在于云容器或 GitHub 托管机。工作不访问用户 Mac，不访问 `/Users/yangzhengkai/Documents/immich-app`，不在 Mac 克隆源码或安装 SDK。
+开发目录、Flutter/Go/Java 依赖和临时测试只存在于云容器或 GitHub 托管机。工作不访问用户 Mac，不访问用户 Mac 的项目目录，不在 Mac 克隆源码或安装 SDK。
 
 Actions 的 `Tailnet iOS` 使用标准 `xcode-27` Arm64 托管 runner，固定选择 Xcode 27.1，不用 `-large`/`-xlarge` 付费机型。该镜像目前是公开预览；镜像缺失或工具链变动会使构建失败并阻止提升。
 
@@ -74,11 +76,17 @@ Actions 的 `Tailnet iOS` 使用标准 `xcode-27` Arm64 托管 runner，固定�
 
 ## 版本跟进与恢复
 
+**实际权限情况（已实跑）**：运行 [40261139589](https://github.com/chinghoi/immich/actions/runs/40261139589) 被 GitHub 拒绝同步 workflow 文件，原因是默认 GITHUB_TOKEN 缺少 workflows 写权限；一次性权限探测也返回 403。不能把这次配置描述成 GitHub 原生自动合入已经成功。
+
+当前采用两条明确通道：GitHub cron 只读发现并输出状态，构建仍由 GitHub Actions 完成；另已创建并启用每 6 小时执行的 ChatGPT 维护任务，用用户已授权且本次实际成功写入的 GitHub 插件维护镜像、候选分支、PR 和验证后的精确提交。该定时任务首次执行尚未发生，后续是否实际完成以任务结果、PR 和 Actions 为准；连接失效、任务暂停或 CI 失败都必须显示阻断，不承诺永久无人值守。
+
+若希望维护完全独立于 ChatGPT，可在仓库 Actions Secrets 配置 `TAILNET_SYNC_TOKEN`：使用只允许 chinghoi/immich 的限时 fine-grained token，授予 Contents、Workflows、Pull requests、Actions 的读写权限。工作流已有此可选接入；不在源码、聊天、制品或日志中存密钥，也不会擅自创建凭据。未配置时只读发现，不反复尝试被拒绝的写入。
+
 默认 main 只附加维护入口，原历史有归档分支。`upstream/main` 是发现用镜像；面向使用者的版本来自官方稳定 Release，定制开发在 `ios/tailscale`，验证后的稳定线为 `ios/stable`。不把官方 main 的每次提交直接发给手机。
 
 `Tailnet upstream maintenance` 每 6 小时检查一次，避开整点，实际计划为 UTC 00:17/06:17/12:17/18:17（北京时间 08:17/14:17/20:17/次日02:17）。GitHub 可能排队、延迟甚至丢弃定时运行，不能承诺实时或严格 6 小时内。
 
-新稳定版创建独立 `sync/tailnet-vX.Y.Z` 候选分支，通过普通 merge 保留补丁并创建本 fork PR。GITHUB_TOKEN 创建的 push/PR 不会递归触发构建，因此同步脚本显式 dispatch。成功回调再次核对仓库、分支、提交、必需步骤、PR 头，再只把**实际测试过的提交**快进到目标分支。不能快进就暂停；不强推，也不把未经测试的新组合强行合入。初始开发 PR 尚未合入稳定线时，发现任务只检查开发基线。
+由维护任务（或配置了专用 Secret 后的 GitHub 工作流）为新稳定版创建独立 `sync/tailnet-vX.Y.Z` 候选分支，通过普通 merge 保留补丁并创建本 fork PR。GITHUB_TOKEN 创建的 push/PR 不会递归触发构建，因此同步脚本显式 dispatch。维护任务或具备权限的成功回调再次核对仓库、分支、提交、必需步骤、PR 头，再只把**实际测试过的提交**快进到目标分支。不能快进就暂停；不强推，也不把未经测试的新组合强行合入。初始开发 PR 尚未合入稳定线时，发现任务只检查开发基线。
 
 冲突时先 abort merge，然后创建带 `update-blocked.json` 的 draft PR；不改稳定线。构建失败则保留候选 PR、失败运行和上一份稳定制品。既有候选分支不会被下一次 cron 强制覆盖。恢复步骤：在云端从候选分支处理冲突，合入目标稳定 tag，复核依赖补丁，更新清单，推送并重跑 `Tailnet iOS`；全通过后才提升。要回滚使用历史成功 Release 与其提交；不要重置或强推现有补丁线。
 

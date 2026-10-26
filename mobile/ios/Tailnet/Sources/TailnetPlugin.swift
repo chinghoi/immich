@@ -16,8 +16,9 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   private static let lock = NSLock()
   private static var proxy: ProxyConfiguration?
   private let channel: FlutterMethodChannel
-  private let monitor = NWPathMonitor()
-  private var previousPath: String?
+  private static let monitor = NWPathMonitor()
+  private static var monitoring = false
+  private static var previousPath: String?
 
   public static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
 
@@ -52,18 +53,25 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
     self.channel = channel
     super.init()
     NotificationCenter.default.addObserver(self, selector: #selector(changed), name: Self.transportChanged, object: nil)
-    monitor.pathUpdateHandler = { [weak self] path in
-      guard let self else { return }
+    Self.startPathMonitor()
+  }
+
+  private static func startPathMonitor() {
+    lock.lock()
+    guard !monitoring else { lock.unlock(); return }
+    monitoring = true
+    lock.unlock()
+    monitor.pathUpdateHandler = { path in
       let signature = "\(path.status)-\(path.availableInterfaces.filter { path.usesInterfaceType($0.type) }.map { $0.name }.sorted())"
-      let previous = self.previousPath
-      self.previousPath = signature
+      let previous = Self.previousPath
+      Self.previousPath = signature
       guard previous != nil, previous != signature, path.status == .satisfied, Self.isEnabled else { return }
       Task { try? await Self.controller.reconnect() }
     }
     monitor.start(queue: DispatchQueue(label: "immich.tailnet.path"))
   }
 
-  deinit { monitor.cancel(); NotificationCenter.default.removeObserver(self) }
+  deinit { NotificationCenter.default.removeObserver(self) }
 
   @objc private func changed() { channel.invokeMethod("transportChanged", arguments: nil) }
 

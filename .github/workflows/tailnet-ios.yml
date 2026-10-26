@@ -27,13 +27,14 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: '1.27.1'
-          cache: false
+          cache: true
+          cache-dependency-path: custom/ios-tailnet/dependencies.json
       - name: Restore immutable framework cache
         id: framework-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: mobile/ios/Tailnet/Frameworks
-          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json') }}
+          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json', 'custom/ios-tailnet/patches/libtailscale-*.patch') }}
       - name: Build pinned TailscaleKit for device and simulator
         if: steps.framework-cache.outputs.cache-hit != 'true'
         run: |
@@ -64,6 +65,7 @@ jobs:
           dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
           flutter test test/tailnet
       - name: Protocol integration on iOS simulator (disposable tailnet)
+        timeout-minutes: 20
         run: bash custom/ios-tailnet/test-simulator.sh
       - name: Build simulator app (no signing)
         working-directory: mobile

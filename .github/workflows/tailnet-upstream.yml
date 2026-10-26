@@ -13,6 +13,8 @@ concurrency:
   group: tailnet-maintenance
   cancel-in-progress: false
 permissions: {}
+env:
+  TAILNET_WORKFLOW_WRITE: ${{ secrets.TAILNET_SYNC_TOKEN != '' }}
 jobs:
   discover:
     if: github.repository == 'chinghoi/immich' && github.event_name != 'workflow_run'
@@ -27,15 +29,16 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
       - name: Discover main and merge stable releases into isolated candidates
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
         run: bash .github/scripts/tailnet-sync.sh
       - name: Verify bot workflow-write and PR-create permissions without merging code
-        if: github.event_name == 'push'
+        if: always() && github.event_name == 'push' && env.TAILNET_WORKFLOW_WRITE == 'true'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
         run: bash .github/scripts/tailnet-permissions-check.sh
   promote:
     if: >-
@@ -56,6 +59,6 @@ jobs:
           persist-credentials: false
       - name: Promote only the exact fully validated candidate
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: bash .github/scripts/tailnet-promote.sh

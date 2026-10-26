@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:immich_mobile/tailnet/tailnet_backup_notice.dart';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +19,7 @@ import 'package:immich_mobile/providers/permission.provider.dart';
 import 'package:immich_mobile/providers/sync_status.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/tailnet/tailnet_backup_notice.dart';
 import 'package:immich_mobile/widgets/backup/backup_info_card.dart';
 import 'package:immich_ui/immich_ui.dart';
 import 'package:logging/logging.dart';
