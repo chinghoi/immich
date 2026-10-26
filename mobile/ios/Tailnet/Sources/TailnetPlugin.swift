@@ -138,6 +138,17 @@ private actor TailnetController {
   private var node: TailscaleNode?
   private var upTask: Task<Void, Never>?
   private var installed = false
+  private var busy = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  // Swift actors are reentrant across await. Serialize node transitions so a
+  // path notification cannot close a node halfway through login/reconnection.
+  private func acquire() async {
+    if busy { await withCheckedContinuation { waiters.append($0) } } else { busy = true }
+  }
+  private func release() {
+    if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() }
+  }
 
   private func stateDirectory() throws -> URL {
     var directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
@@ -152,6 +163,11 @@ private actor TailnetController {
   }
 
   func prepare() async throws {
+    await acquire(); defer { release() }
+    try await prepareUnlocked()
+  }
+
+  private func prepareUnlocked() async throws {
     if node == nil {
       let config = Configuration(hostName: "immich-ios", path: try stateDirectory().path,
                                  authKey: nil, controlURL: kDefaultControlURL, ephemeral: false)
@@ -169,14 +185,16 @@ private actor TailnetController {
   }
 
   func login() async throws {
-    try await prepare()
+    await acquire(); defer { release() }
+    try await prepareUnlocked()
     guard let node else { throw TailnetFailure.invalidState }
     try await LocalAPIClient(localNode: node, logger: nil).startLoginInteractive()
   }
 
   func status() async throws -> [String: Any] {
+    await acquire(); defer { release() }
     guard TailnetPlugin.isEnabled else { return ["enabled": false, "state": "Disabled"] }
-    try await prepare()
+    try await prepareUnlocked()
     guard let node else { throw TailnetFailure.invalidState }
     let data = try await node.statusJSON()
     let status = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
@@ -187,23 +205,31 @@ private actor TailnetController {
   }
 
   func checkLoopback() async throws {
-    try await prepare()
+    await acquire(); defer { release() }
+    try await prepareUnlocked()
     guard let node else { return }
     do {
       _ = try await localRequest(node, endpoint: "status", method: "GET", timeout: 3)
     } catch {
       // iOS may reclaim the cached loopback listener during suspension. Recreate
       // the node with the SAME protected identity, never mint a new identity here.
-      try await reconnect()
+      try await stopUnlocked(forgetIdentity: false)
+      if TailnetPlugin.isEnabled { try await prepareUnlocked() }
     }
   }
 
   func reconnect() async throws {
-    try await stop(forgetIdentity: false)
-    if TailnetPlugin.isEnabled { try await prepare() }
+    await acquire(); defer { release() }
+    try await stopUnlocked(forgetIdentity: false)
+    if TailnetPlugin.isEnabled { try await prepareUnlocked() }
   }
 
   func stop(forgetIdentity: Bool) async throws {
+    await acquire(); defer { release() }
+    try await stopUnlocked(forgetIdentity: forgetIdentity)
+  }
+
+  private func stopUnlocked(forgetIdentity: Bool) async throws {
     let old = node
     node = nil
     installed = false

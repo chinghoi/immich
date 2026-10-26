@@ -62,6 +62,8 @@ jobs:
         run: |
           dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
           flutter test test/tailnet
+      - name: Protocol integration on iOS simulator (disposable tailnet)
+        run: bash custom/ios-tailnet/test-simulator.sh
       - name: Build simulator app (no signing)
         working-directory: mobile
         run: |
@@ -78,6 +80,13 @@ jobs:
         with:
           name: tailnet-build-logs-${{ github.sha }}
           path: ${{ runner.temp }}/tailnet-*.log
+          retention-days: 7
+      - name: Upload simulator test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-simulator-tests-${{ github.sha }}
+          path: ${{ runner.temp }}/tailnet-transport.xcresult
           retention-days: 7
       - name: Upload unsigned validation apps
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

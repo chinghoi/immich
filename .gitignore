@@ -32,3 +32,5 @@ vite.config.js.timestamp-*
 # Cloud-built, pinned embedded Tailscale frameworks
 .tailnet-build/
 mobile/ios/Tailnet/Frameworks/
+
+custom/ios-tailnet/__pycache__/
