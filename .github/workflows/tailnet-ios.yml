@@ -1,0 +1,103 @@
+name: Tailnet iOS
+on:
+  push:
+    branches: ['ios/tailscale', 'ios/stable', 'sync/tailnet-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+concurrency:
+  group: tailnet-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify cloud toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          ls /Applications | sort
+      - name: Go toolchain (matches pinned libtailscale go.mod)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Restore immutable framework cache
+        id: framework-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks
+          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json') }}
+      - name: Build pinned TailscaleKit for device and simulator
+        if: steps.framework-cache.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          bash custom/ios-tailnet/build-framework.sh 2>&1 | tee "$RUNNER_TEMP/tailnet-framework.log"
+      - name: Save immutable framework cache
+        if: steps.framework-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks
+          key: ${{ steps.framework-cache.outputs.cache-primary-key }}
+      - name: Setup official mobile tool versions
+        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
+        with:
+          github_token: ${{ github.token }}
+          working_directory: ./mobile
+      - name: Install dependencies and generate official mobile code
+        id: mobile-dependencies
+        run: |
+          mise //:open-api-dart
+          cd mobile && flutter pub get --enforce-lockfile && cd ..
+          python3 custom/ios-tailnet/patch-dependencies.py
+          mise //mobile:install:ios
+          mise //mobile:codegen
+      - name: Analyze transport and run regression tests
+        working-directory: mobile
+        run: |
+          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
+          flutter test test/tailnet
+      - name: Protocol integration on iOS simulator (disposable tailnet)
+        run: bash custom/ios-tailnet/test-simulator.sh
+      - name: Build simulator app (no signing)
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
+      - name: Build device app (unsigned, cannot install directly)
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-device.log"
+      - name: Package unsigned IPA and simulator archive for cloud retention
+        run: bash custom/ios-tailnet/package-unsigned.sh
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-build-logs-${{ github.sha }}
+          path: ${{ runner.temp }}/tailnet-*.log
+          retention-days: 7
+      - name: Upload simulator test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-simulator-tests-${{ github.sha }}
+          path: ${{ runner.temp }}/tailnet-transport.xcresult
+          retention-days: 7
+      - name: Upload unsigned validation apps
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-ios-unsigned-${{ github.sha }}
+          path: |
+            mobile/build/tailnet-distribution/*.ipa
+            mobile/build/tailnet-distribution/*.zip
+            mobile/build/tailnet-distribution/*.json
+            mobile/build/tailnet-distribution/SHA256SUMS
+          retention-days: 14
