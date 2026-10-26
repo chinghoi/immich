@@ -10,6 +10,8 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static let enabledKey = "immich.tailnet.enabled"
   public static let transportChanged = Notification.Name("immich.tailnet.transportChanged")
   public static var rebuildSession: (() -> Void)?
+  public static var expireTransfers: (() -> Void)?
+  private static var graceTask: UIBackgroundTaskIdentifier = .invalid
   private static let controller = TailnetController()
   private static let lock = NSLock()
   private static var proxy: ProxyConfiguration?
@@ -22,7 +24,11 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static func configure(_ configuration: URLSessionConfiguration) {
     lock.lock()
     defer { lock.unlock() }
-    if isEnabled, let proxy { configuration.proxyConfigurations = [proxy] }
+    if isEnabled {
+      // Fail closed while authorization/startup/reconnect is incomplete.
+      let blocked = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: 9))
+      configuration.proxyConfigurations = [proxy ?? blocked]
+    }
   }
 
   fileprivate static func install(_ value: ProxyConfiguration?) async {
@@ -62,8 +68,23 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   @objc private func changed() { channel.invokeMethod("transportChanged", arguments: nil) }
 
   public func applicationDidBecomeActive(_ application: UIApplication) {
+    if Self.graceTask != .invalid {
+      application.endBackgroundTask(Self.graceTask)
+      Self.graceTask = .invalid
+    }
     guard Self.isEnabled else { return }
     Task { try? await Self.controller.checkLoopback() }
+  }
+
+  public func applicationDidEnterBackground(_ application: UIApplication) {
+    guard Self.isEnabled, Self.graceTask == .invalid else { return }
+    // A legitimate, finite UIKit task for finishing current file transfers.
+    // iOS owns the budget. No background modes, timers, audio or VPN workaround.
+    Self.graceTask = application.beginBackgroundTask(withName: "Finish Immich transfers") {
+      Self.expireTransfers?()
+      application.endBackgroundTask(Self.graceTask)
+      Self.graceTask = .invalid
+    }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

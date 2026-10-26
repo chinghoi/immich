@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:immich_mobile/tailnet/tailnet_backup_notice.dart';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -130,6 +131,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             padding: const EdgeInsets.only(left: 16.0, right: 16, bottom: 32),
             child: ListView(
               children: [
+                const TailnetBackupNotice(),
                 const SizedBox(height: 8),
                 const _BackupAlbumSelectionCard(),
                 if (selectedAlbum.isNotEmpty) ...[

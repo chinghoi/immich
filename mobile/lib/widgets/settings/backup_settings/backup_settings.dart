@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:immich_mobile/tailnet/tailnet_backup_notice.dart';
 
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,6 +24,7 @@ class BackupSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     return SettingsSubPageScaffold(
       settings: [
+        const TailnetBackupNotice(),
         SettingGroupTitle(title: context.t.network_requirements, icon: Icons.cell_tower),
         const _UseCellularForVideosButton(),
         const _UseCellularForPhotosButton(),

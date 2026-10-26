@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -20,12 +21,15 @@ class TailnetSession {
   }
 
   static Future<bool> get enabled async =>
-      defaultTargetPlatform == TargetPlatform.iOS && (await channel.invokeMethod<bool>('enabled') ?? false);
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      (await channel.invokeMethod<bool>('enabled') ?? false);
 
   static Future<Map<String, dynamic>> status() async =>
-      await channel.invokeMapMethod<String, dynamic>('status') ?? {'enabled': false, 'state': 'Disabled'};
+      await channel.invokeMapMethod<String, dynamic>('status') ??
+      {'enabled': false, 'state': 'Disabled'};
 
-  static Future<void> action(String action) => channel.invokeMethod<void>(action);
+  static Future<void> action(String action) =>
+      channel.invokeMethod<void>(action);
 
   static Future<void> requireSystemBackgroundTransport() async {
     if (await enabled) {

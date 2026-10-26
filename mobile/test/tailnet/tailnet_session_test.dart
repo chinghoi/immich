@@ -16,7 +16,8 @@ void main() {
         .setMockMethodCallHandler(TailnetSession.channel, (call) async {
           calls.add(call.method);
           if (call.method == 'enabled') return enabled;
-          if (call.method == 'status') return {'enabled': enabled, 'state': 'NeedsLogin'};
+          if (call.method == 'status')
+            return {'enabled': enabled, 'state': 'NeedsLogin'};
           return null;
         });
   });
@@ -30,7 +31,10 @@ void main() {
 
   test('system background queue is rejected even before tailnet authorization completes', () async {
     enabled = true;
-    await expectLater(TailnetSession.requireSystemBackgroundTransport(), throwsStateError);
+    await expectLater(
+      TailnetSession.requireSystemBackgroundTransport(),
+      throwsStateError,
+    );
     expect(calls, ['enabled']);
   });
 
@@ -46,20 +50,26 @@ void main() {
     expect(calls, isEmpty);
   });
 
-  test('authorization status can be displayed without exposing proxy secrets', () async {
-    enabled = true;
-    final status = await TailnetSession.status();
-    expect(status, {'enabled': true, 'state': 'NeedsLogin'});
-  });
+  test(
+    'authorization status can be displayed without exposing proxy secrets',
+    () async {
+      enabled = true;
+      final status = await TailnetSession.status();
+      expect(status, {'enabled': true, 'state': 'NeedsLogin'});
+    },
+  );
 
   test('native reconnect notifies the cached HTTP session owner', () async {
     var refreshed = false;
-    TailnetSession.onTransportChanged = () async { refreshed = true; };
+    TailnetSession.onTransportChanged = () async {
+      refreshed = true;
+    };
     await TailnetSession.prepare();
-    final message = const StandardMethodCodec().encodeMethodCall(const MethodCall('transportChanged'));
-    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
-      'app.immich/tailnet', message, (_) {},
+    final message = const StandardMethodCodec().encodeMethodCall(
+      const MethodCall('transportChanged'),
     );
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage('app.immich/tailnet', message, (_) {});
     expect(refreshed, isTrue);
   });
 }

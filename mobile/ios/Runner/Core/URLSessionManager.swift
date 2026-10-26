@@ -152,6 +152,12 @@ class URLSessionManager: NSObject {
 
   private static func buildSession(delegate: URLSessionManagerDelegate) -> URLSession {
     let config = URLSessionConfiguration.default
+    configure(config)
+    return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+  }
+
+  /// Single policy boundary for API, images, WebSocket, transfers and video.
+  static func configure(_ config: URLSessionConfiguration) {
     config.urlCache = urlCache
     config.httpCookieStorage = cookieStorage
     config.httpMaximumConnectionsPerHost = 64
@@ -162,7 +168,6 @@ class URLSessionManager: NSObject {
     headers["User-Agent"] = headers["User-Agent"] ?? userAgent
     config.httpAdditionalHeaders = headers
 
-    return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
   }
 
   /// Patches background_downloader's URLSession to use shared auth configuration.

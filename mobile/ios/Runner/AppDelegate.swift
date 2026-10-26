@@ -1,5 +1,6 @@
 import native_video_player
 import ImmichTailnet
+import background_downloader
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -13,7 +14,20 @@ import ImmichTailnet
     }
 
     SwiftNativeVideoPlayerPlugin.cookieStorage = URLSessionManager.cookieStorage
-    TailnetPlugin.rebuildSession = { URLSessionManager.shared.recreateSession() }
+    UrlSessionDelegate.configurationFactory = { identifier in
+      let configuration = TailnetPlugin.isEnabled ? URLSessionConfiguration.default
+        : URLSessionConfiguration.background(withIdentifier: identifier)
+      URLSessionManager.configure(configuration)
+      return configuration
+    }
+    TailnetPlugin.rebuildSession = {
+      URLSessionManager.shared.recreateSession()
+      UrlSessionDelegate.resetSession()
+    }
+    TailnetPlugin.expireTransfers = {
+      URLSessionManager.shared.session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+      UrlSessionDelegate.resetSession()
+    }
     URLSessionManager.patchBackgroundDownloader()
     BackgroundWorkerApiImpl.registerBackgroundWorkers()
 

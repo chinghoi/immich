@@ -1,0 +1,13 @@
+--- a/ios/Classes/VideoProxyServer.swift
++++ b/ios/Classes/VideoProxyServer.swift
+@@ -46,7 +46,9 @@
+         listener = nil
+ 
+         let port = port > 0 ? NWEndpoint.Port(rawValue: port) ?? .any : .any
+-        let nwListener = try NWListener(using: .tcp, on: port)
++        let parameters = NWParameters.tcp
++        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
++        let nwListener = try NWListener(using: parameters)
+         let semaphore = DispatchSemaphore(value: 0)
+         var startError: Error?
+         nwListener.stateUpdateHandler = { [weak self, weak nwListener] state in

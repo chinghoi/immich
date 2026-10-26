@@ -28,10 +28,23 @@ jobs:
         with:
           go-version: '1.27.1'
           cache: false
+      - name: Restore immutable framework cache
+        id: framework-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks
+          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode26.6-${{ hashFiles('custom/ios-tailnet/dependencies.json') }}
       - name: Build pinned TailscaleKit for device and simulator
+        if: steps.framework-cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
           bash custom/ios-tailnet/build-framework.sh 2>&1 | tee "$RUNNER_TEMP/tailnet-framework.log"
+      - name: Save immutable framework cache
+        if: steps.framework-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks
+          key: ${{ steps.framework-cache.outputs.cache-primary-key }}
       - name: Setup official mobile tool versions
         uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
         with:
@@ -39,12 +52,15 @@ jobs:
           working_directory: ./mobile
       - name: Install dependencies and generate official mobile code
         run: |
-          mise //mobile:install:ci
+          mise //:open-api-dart
+          cd mobile && flutter pub get --enforce-lockfile && cd ..
+          python3 custom/ios-tailnet/patch-dependencies.py
+          mise //mobile:install:ios
           mise //mobile:codegen
       - name: Analyze transport and run regression tests
         working-directory: mobile
         run: |
-          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart lib/repositories/upload.repository.dart
+          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
           flutter test test/tailnet
       - name: Build simulator app (no signing)
         working-directory: mobile

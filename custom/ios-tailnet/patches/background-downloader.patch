@@ -1,0 +1,27 @@
+--- a/ios/background_downloader/Sources/background_downloader/UrlSessionDelegate.swift
++++ b/ios/background_downloader/Sources/background_downloader/UrlSessionDelegate.swift
+@@ -13,6 +13,15 @@
+     
+     static let instance = UrlSessionDelegate()
+     static var urlSession: URLSession?
++    // Fork seam: policy stays in the host app; this dependency knows no Tailscale APIs.
++    public static var configurationFactory: ((String) -> URLSessionConfiguration)?
++
++    public static func resetSession() {
++        let previous = urlSession
++        urlSession = nil
++        previous?.invalidateAndCancel()
++        createUrlSession()
++    }
+     public static var sessionIdentifier = "com.bbflight.background_downloader.Downloader"
+     public static var backgroundCompletionHandler: (() -> Void)?
+     
+@@ -516,7 +525,7 @@
+         if UrlSessionDelegate.urlSession != nil {
+             return
+         }
+-        let config = URLSessionConfiguration.background(withIdentifier: UrlSessionDelegate.sessionIdentifier)
++        let config = configurationFactory?(sessionIdentifier) ?? URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
+         let defaults = UserDefaults.standard
+         let storedTimeoutIntervalForResource = defaults.double(forKey: BDPlugin.keyConfigResourceTimeout) // seconds
+         let timeOutIntervalForResource = storedTimeoutIntervalForResource > 0 ? storedTimeoutIntervalForResource : BDPlugin.defaultResourceTimeout
