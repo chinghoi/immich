@@ -1,17 +1,22 @@
 # iOS Tailscale fork maintenance
 
-The historical main branch is preserved in archive/main-before-tailnet-20261026.
-This commit only appends isolated maintenance files; it does not replace main
-with upstream or change its App/server/Web/Android source.
+Historical main: archive/main-before-tailnet-20261026. Custom code: ios/tailscale.
+Stable line: ios/stable. Discovery mirror: upstream/main. No force push is used.
 
-Custom development: ios/tailscale. Validated stable line: ios/stable.
-Upstream discovery mirror: upstream/main. Candidate branches: sync/tailnet-vX.Y.Z.
+Actual permission test: Actions run 40261139589 was refused workflows writes.
+The default GITHUB_TOKEN cannot perform full upstream synchronization in this fork.
+Without an optional TAILNET_SYNC_TOKEN, the GitHub cron therefore only discovers
+main/stable changes and reports its mode explicitly. It does not claim promotion.
 
-The scheduled check runs every 6 hours and can be delayed or disabled by GitHub.
-No Apple signing, TestFlight, App Store publishing, or server upgrade occurs.
-Read the implementation and actual verification record on the custom branch:
+An authorized ChatGPT task has been created and enabled to check every 6 hours and
+use the existing GitHub plugin for writes. Its first scheduled run has not occurred.
+It must verify the exact candidate commit passed all Tailnet iOS checks before a
+non-forced fast-forward. Failed/conflicted work preserves the last good version.
+
+For standalone GitHub maintenance, optionally provision a short-lived fine-grained
+TAILNET_SYNC_TOKEN restricted to this repository with Contents, Workflows,
+Pull requests and Actions read/write permissions. Never put the token in source.
+
+No Apple signing, TestFlight, App Store publication or home-server upgrade occurs.
+Details and actual verification records:
 https://github.com/chinghoi/immich/tree/ios/tailscale/custom/ios-tailnet
-
-Only fully successful protocol tests plus simulator and unsigned device builds
-can promote a candidate, by a non-forced fast-forward to its exact tested SHA.
-Failed/conflicted updates preserve the previous stable branch and release.

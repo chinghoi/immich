@@ -5,9 +5,7 @@ repo=$GITHUB_REPOSITORY
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git remote add upstream https://github.com/immich-app/immich.git
-git fetch upstream main --tags
-# The mirror is discovery only. Never force through an upstream history rewrite.
-git push origin refs/remotes/upstream/main:refs/heads/upstream/main
+git fetch --quiet upstream main
 base=ios/stable
 if ! git show "origin/$base:custom/ios-tailnet/dependencies.json" > /tmp/tailnet-baseline.json 2>/dev/null; then
   base=ios/tailscale
@@ -18,7 +16,16 @@ current=$(python3 -c 'import json;print(json.load(open("/tmp/tailnet-baseline.js
 tag=$(gh api repos/immich-app/immich/releases/latest --jq '.tag_name')
 [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 printf 'Stable baseline: `%s`. Latest upstream stable: `%s`.\n' "$current" "$tag" >> "$GITHUB_STEP_SUMMARY"
+printf 'Discovered upstream main: `%s`.\n' "$(git rev-parse refs/remotes/upstream/main)" >> "$GITHUB_STEP_SUMMARY"
+if [[ ${TAILNET_WORKFLOW_WRITE:-false} != true ]]; then
+  echo 'Discovery-only mode: the default GITHUB_TOKEN lacks workflows write permission. The authorized ChatGPT maintenance task uses the existing GitHub plugin for writes. No automatic sync is claimed by this workflow.' >> "$GITHUB_STEP_SUMMARY"
+  exit 0
+fi
+# Optional standalone GitHub mode with an explicitly provisioned scoped Secret.
+# The mirror is discovery only. Never force through an upstream history rewrite.
+git push origin refs/remotes/upstream/main:refs/heads/upstream/main
 [[ $tag != "$current" ]] || exit 0
+git fetch --quiet upstream "refs/tags/$tag:refs/tags/$tag"
 branch="sync/tailnet-$tag"
 if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
   echo "Existing candidate $branch left intact; resolve or rerun its PR. No forced overwrite." >> "$GITHUB_STEP_SUMMARY"
