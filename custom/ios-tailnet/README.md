@@ -78,7 +78,7 @@ Actions 的 `Tailnet iOS` 使用标准 `xcode-27` Arm64 托管 runner，固定�
 
 **实际权限情况（已实跑）**：运行 [40261139589](https://github.com/chinghoi/immich/actions/runs/40261139589) 被 GitHub 拒绝同步 workflow 文件，原因是默认 GITHUB_TOKEN 缺少 workflows 写权限；一次性权限探测也返回 403。不能把这次配置描述成 GitHub 原生自动合入已经成功。
 
-当前采用两条明确通道：GitHub cron 只读发现并输出状态，构建仍由 GitHub Actions 完成；另已创建并启用每 6 小时执行的 ChatGPT 维护任务，用用户已授权且本次实际成功写入的 GitHub 插件维护镜像、候选分支、PR 和验证后的精确提交。该定时任务首次执行尚未发生，后续是否实际完成以任务结果、PR 和 Actions 为准；连接失效、任务暂停或 CI 失败都必须显示阻断，不承诺永久无人值守。
+当前采用两条明确通道：GitHub cron 只读发现并输出状态，构建仍由 GitHub Actions 完成；另已创建并启用每 6 小时执行的 ChatGPT 维护任务，用用户已授权且本次实际成功写入的 GitHub 插件维护镜像、候选分支、PR 和验证后的精确提交。维护任务已实际执行检查和构建修复，后续是否完成合入以 PR 和对应提交的完整 Actions 为准；连接失效、任务暂停或 CI 失败都必须显示阻断，不承诺永久无人值守。
 
 若希望维护完全独立于 ChatGPT，可在仓库 Actions Secrets 配置 `TAILNET_SYNC_TOKEN`：使用只允许 chinghoi/immich 的限时 fine-grained token，授予 Contents、Workflows、Pull requests、Actions 的读写权限。工作流已有此可选接入；不在源码、聊天、制品或日志中存密钥，也不会擅自创建凭据。未配置时只读发现，不反复尝试被拒绝的写入。
 

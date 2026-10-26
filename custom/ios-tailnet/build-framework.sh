@@ -12,9 +12,11 @@ git -C "$source_dir" fetch --depth=1 origin "$commit"
 git -C "$source_dir" checkout --detach FETCH_HEAD
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$commit"
 logging_patch="$root/custom/ios-tailnet/patches/libtailscale-logging.patch"
-if ! (cd "$source_dir" && patch --batch -p1 --reverse --dry-run -i "$logging_patch") >/dev/null 2>&1; then
-  (cd "$source_dir" && patch --batch -p1 --forward -i "$logging_patch")
+if ! git -C "$source_dir" apply --reverse --check "$logging_patch" >/dev/null 2>&1; then
+  git -C "$source_dir" apply --check "$logging_patch"
+  git -C "$source_dir" apply "$logging_patch"
 fi
+git -C "$source_dir" apply --reverse --check "$logging_patch"
 # Upstream pipes xcodebuild to a prettifier without pipefail. Propagate failures.
 make -C "$source_dir/swift" SHELL=/bin/bash '.SHELLFLAGS=-eu -o pipefail -c' ios-fat
 mkdir -p "$root/mobile/ios/Tailnet/Frameworks"

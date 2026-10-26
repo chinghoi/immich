@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: mobile/ios/Tailnet/Frameworks
-          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json', 'custom/ios-tailnet/patches/libtailscale-*.patch') }}
+          key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json', 'custom/ios-tailnet/build-framework.sh', 'custom/ios-tailnet/patches/libtailscale-*.patch') }}
       - name: Build pinned TailscaleKit for device and simulator
         if: steps.framework-cache.outputs.cache-hit != 'true'
         run: |
@@ -73,6 +73,7 @@ jobs:
         working-directory: mobile
         run: |
           set -o pipefail
+          python3 ../custom/ios-tailnet/patch-dependencies.py
           flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
       - name: Build device app (unsigned, cannot install directly)
         id: device-build
@@ -80,6 +81,7 @@ jobs:
         working-directory: mobile
         run: |
           set -o pipefail
+          python3 ../custom/ios-tailnet/patch-dependencies.py
           flutter build ios --release --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-device.log"
       - name: Package unsigned IPA and simulator archive for cloud retention
         run: bash custom/ios-tailnet/package-unsigned.sh
