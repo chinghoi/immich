@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 concurrency:
   group: tailnet-ios-${{ github.ref }}
   cancel-in-progress: true
@@ -21,3 +23,51 @@ jobs:
           sw_vers
           xcodebuild -version
           ls /Applications | sort
+      - name: Go toolchain (matches pinned libtailscale go.mod)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Build pinned TailscaleKit for device and simulator
+        run: |
+          set -o pipefail
+          bash custom/ios-tailnet/build-framework.sh 2>&1 | tee "$RUNNER_TEMP/tailnet-framework.log"
+      - name: Setup official mobile tool versions
+        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
+        with:
+          github_token: ${{ github.token }}
+          working_directory: ./mobile
+      - name: Install dependencies and generate official mobile code
+        run: |
+          mise //mobile:install:ci
+          mise //mobile:codegen
+      - name: Analyze transport and run regression tests
+        working-directory: mobile
+        run: |
+          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart lib/repositories/upload.repository.dart
+          flutter test test/tailnet
+      - name: Build simulator app (no signing)
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
+      - name: Build device app (unsigned, cannot install directly)
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-device.log"
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-build-logs-${{ github.sha }}
+          path: ${{ runner.temp }}/tailnet-*.log
+          retention-days: 7
+      - name: Upload unsigned validation apps
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tailnet-ios-unsigned-${{ github.sha }}
+          path: |
+            mobile/build/ios/iphonesimulator/*.app
+            mobile/build/ios/iphoneos/*.app
+          retention-days: 14

@@ -1,5 +1,6 @@
 import Foundation
 import native_video_player
+import ImmichTailnet
 
 let CLIENT_CERT_LABEL = "app.alextran.immich.client_identity"
 let HEADERS_KEY = "immich.request_headers"
@@ -77,7 +78,12 @@ class URLSessionManager: NSObject {
   }
 
   func recreateSession() {
+    // Mode changes and stale loopback recovery must cancel old transport work.
+    // Dart holds a stable forwarding client and reacquires the replacement.
+    let previous = session
     session = Self.buildSession(delegate: delegate)
+    previous.invalidateAndCancel()
+    VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? session : nil
   }
 
   static func setServerUrls(_ urls: [String]) {
@@ -150,6 +156,7 @@ class URLSessionManager: NSObject {
     config.httpCookieStorage = cookieStorage
     config.httpMaximumConnectionsPerHost = 64
     config.timeoutIntervalForRequest = 60
+    TailnetPlugin.configure(config)
 
     var headers = UserDefaults.group.dictionary(forKey: HEADERS_KEY) as? [String: String] ?? [:]
     headers["User-Agent"] = headers["User-Agent"] ?? userAgent

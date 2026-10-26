@@ -10,6 +10,7 @@ import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/infrastructure/repositories/network.repository.dart';
 import 'package:logging/logging.dart';
+import 'package:immich_mobile/tailnet/tailnet_session.dart';
 
 final uploadRepositoryProvider = Provider((ref) => UploadRepository());
 
@@ -36,7 +37,8 @@ class UploadRepository {
     );
   }
 
-  Future<List<bool>> enqueueBackgroundAll(List<UploadTask> tasks) {
+  Future<List<bool>> enqueueBackgroundAll(List<UploadTask> tasks) async {
+    await TailnetSession.requireSystemBackgroundTransport();
     return FileDownloader().enqueueAll(tasks);
   }
 

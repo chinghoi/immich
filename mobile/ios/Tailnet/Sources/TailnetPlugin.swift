@@ -1,0 +1,215 @@
+import Flutter
+import Foundation
+import Network
+import TailscaleKit
+import UIKit
+
+/// This module never creates a NetworkExtension or changes the device's VPN.
+/// Credentials from loopback() remain in this process and never cross Flutter.
+public final class TailnetPlugin: NSObject, FlutterPlugin {
+  public static let enabledKey = "immich.tailnet.enabled"
+  public static let transportChanged = Notification.Name("immich.tailnet.transportChanged")
+  public static var rebuildSession: (() -> Void)?
+  private static let controller = TailnetController()
+  private static let lock = NSLock()
+  private static var proxy: ProxyConfiguration?
+  private let channel: FlutterMethodChannel
+  private let monitor = NWPathMonitor()
+  private var previousPath: String?
+
+  public static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+
+  public static func configure(_ configuration: URLSessionConfiguration) {
+    lock.lock()
+    defer { lock.unlock() }
+    if isEnabled, let proxy { configuration.proxyConfigurations = [proxy] }
+  }
+
+  fileprivate static func install(_ value: ProxyConfiguration?) async {
+    await MainActor.run {
+      lock.lock()
+      proxy = value
+      lock.unlock()
+      rebuildSession?()
+      NotificationCenter.default.post(name: transportChanged, object: nil)
+    }
+  }
+
+  public static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "app.immich/tailnet", binaryMessenger: registrar.messenger())
+    let instance = TailnetPlugin(channel: channel)
+    registrar.addMethodCallDelegate(instance, channel: channel)
+    registrar.addApplicationDelegate(instance)
+  }
+
+  private init(channel: FlutterMethodChannel) {
+    self.channel = channel
+    super.init()
+    NotificationCenter.default.addObserver(self, selector: #selector(changed), name: Self.transportChanged, object: nil)
+    monitor.pathUpdateHandler = { [weak self] path in
+      guard let self else { return }
+      let signature = "\(path.status)-\(path.availableInterfaces.filter { path.usesInterfaceType($0.type) }.map { $0.name }.sorted())"
+      let previous = self.previousPath
+      self.previousPath = signature
+      guard previous != nil, previous != signature, path.status == .satisfied, Self.isEnabled else { return }
+      Task { try? await Self.controller.reconnect() }
+    }
+    monitor.start(queue: DispatchQueue(label: "immich.tailnet.path"))
+  }
+
+  deinit { monitor.cancel(); NotificationCenter.default.removeObserver(self) }
+
+  @objc private func changed() { channel.invokeMethod("transportChanged", arguments: nil) }
+
+  public func applicationDidBecomeActive(_ application: UIApplication) {
+    guard Self.isEnabled else { return }
+    Task { try? await Self.controller.checkLoopback() }
+  }
+
+  public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    Task {
+      do {
+        let response: Any?
+        switch call.method {
+        case "enabled": response = Self.isEnabled
+        case "prepare":
+          if Self.isEnabled { try await Self.controller.prepare() }
+          response = nil
+        case "enable":
+          UserDefaults.standard.set(true, forKey: Self.enabledKey)
+          try await Self.controller.prepare()
+          response = nil
+        case "disable":
+          UserDefaults.standard.set(false, forKey: Self.enabledKey)
+          try await Self.controller.stop(forgetIdentity: false)
+          response = nil
+        case "login":
+          guard Self.isEnabled else { throw TailnetFailure.disabled }
+          try await Self.controller.login()
+          response = nil
+        case "reconnect":
+          guard Self.isEnabled else { throw TailnetFailure.disabled }
+          try await Self.controller.reconnect()
+          response = nil
+        case "logout":
+          UserDefaults.standard.set(false, forKey: Self.enabledKey)
+          try await Self.controller.stop(forgetIdentity: true)
+          response = nil
+        case "status": response = try await Self.controller.status()
+        default:
+          await MainActor.run { result(FlutterMethodNotImplemented) }
+          return
+        }
+        await MainActor.run { result(response) }
+      } catch {
+        // Never include Go errors, auth URLs, node keys, or SOCKS credentials in logs.
+        await MainActor.run {
+          result(FlutterError(code: "TAILNET_UNAVAILABLE", message: "Tailscale unavailable. Reconnect or authorize this device.", details: nil))
+        }
+      }
+    }
+  }
+}
+
+private enum TailnetFailure: Error { case disabled, invalidState }
+
+private actor TailnetController {
+  private var node: TailscaleNode?
+  private var upTask: Task<Void, Never>?
+  private var installed = false
+
+  private func stateDirectory() throws -> URL {
+    var directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                appropriateFor: nil, create: true)
+      .appendingPathComponent("ImmichTailnet", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+      attributes: [.posixPermissions: 0o700, .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+    var values = URLResourceValues()
+    values.isExcludedFromBackup = true
+    try directory.setResourceValues(values)
+    return directory
+  }
+
+  func prepare() async throws {
+    if node == nil {
+      let config = Configuration(hostName: "immich-ios", path: try stateDirectory().path,
+                                 authKey: nil, controlURL: kDefaultControlURL, ephemeral: false)
+      let created = try TailscaleNode(config: config, logger: nil)
+      node = created
+      // up() waits for authorization. Do not block the UI or the login screen.
+      upTask = Task { try? await created.up() }
+    }
+    guard !installed, let node else { return }
+    let configuration = URLSessionConfiguration.ephemeral
+    _ = try await configuration.proxyVia(node)
+    guard let proxy = configuration.proxyConfigurations.first else { throw TailnetFailure.invalidState }
+    installed = true
+    await TailnetPlugin.install(proxy)
+  }
+
+  func login() async throws {
+    try await prepare()
+    guard let node else { throw TailnetFailure.invalidState }
+    try await LocalAPIClient(localNode: node, logger: nil).startLoginInteractive()
+  }
+
+  func status() async throws -> [String: Any] {
+    guard TailnetPlugin.isEnabled else { return ["enabled": false, "state": "Disabled"] }
+    try await prepare()
+    guard let node else { throw TailnetFailure.invalidState }
+    let data = try await node.statusJSON()
+    let status = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    // Deliberately whitelist fields; statusJSON also contains detailed tailnet data.
+    return ["enabled": true, "state": status["BackendState"] as? String ?? "Starting",
+            "authURL": status["AuthURL"] as? String ?? "",
+            "background": "foreground-only"]
+  }
+
+  func checkLoopback() async throws {
+    try await prepare()
+    guard let node else { return }
+    do {
+      _ = try await localRequest(node, endpoint: "status", method: "GET", timeout: 3)
+    } catch {
+      // iOS may reclaim the cached loopback listener during suspension. Recreate
+      // the node with the SAME protected identity, never mint a new identity here.
+      try await reconnect()
+    }
+  }
+
+  func reconnect() async throws {
+    try await stop(forgetIdentity: false)
+    if TailnetPlugin.isEnabled { try await prepare() }
+  }
+
+  func stop(forgetIdentity: Bool) async throws {
+    let old = node
+    node = nil
+    installed = false
+    upTask?.cancel()
+    upTask = nil
+    if let old {
+      if forgetIdentity { _ = try? await localRequest(old, endpoint: "logout", method: "POST", timeout: 5) }
+      try await old.close()
+    }
+    await TailnetPlugin.install(nil)
+    if forgetIdentity { try FileManager.default.removeItem(at: stateDirectory()) }
+  }
+
+  private func localRequest(_ node: TailscaleNode, endpoint: String, method: String, timeout: TimeInterval) async throws -> Data {
+    let (configuration, loopback) = try await URLSessionConfiguration.tailscaleSession(node)
+    configuration.timeoutIntervalForRequest = timeout
+    configuration.timeoutIntervalForResource = timeout
+    let session = URLSession(configuration: configuration)
+    defer { session.invalidateAndCancel() }
+    guard let url = URL(string: "http://\(loopback.address)/localapi/v0/\(endpoint)") else { throw TailnetFailure.invalidState }
+    var request = URLRequest(url: url)
+    request.httpMethod = method
+    request.setValue("localapi", forHTTPHeaderField: "Sec-Tailscale")
+    let basic = Data("tsnet:\(loopback.localAPIKey)".utf8).base64EncodedString()
+    request.setValue("Basic \(basic)", forHTTPHeaderField: "Authorization")
+    let (data, response) = try await session.data(for: request)
+    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw TailnetFailure.invalidState }
+    return data
+  }
+}

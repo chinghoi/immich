@@ -28,3 +28,7 @@ vite.config.js.timestamp-*
 .devcontainer/.env*
 *.tsbuildinfo
 *.tsbuildInfo
+
+# Cloud-built, pinned embedded Tailscale frameworks
+.tailnet-build/
+mobile/ios/Tailnet/Frameworks/

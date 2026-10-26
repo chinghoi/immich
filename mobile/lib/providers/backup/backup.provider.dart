@@ -9,6 +9,7 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/services/background_upload.service.dart';
+import 'package:immich_mobile/tailnet/tailnet_session.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/utils/upload_speed_calculator.dart';
 import 'package:logging/logging.dart';
@@ -252,6 +253,7 @@ class BackupNotifier extends StateNotifier<BackupState> {
   }
 
   Future<void> startBackupWithURLSession(String userId, Future<bool> remoteSync) async {
+    await TailnetSession.requireSystemBackgroundTransport();
     if (!mounted) {
       _logger.warning("Skip handleBackupResume (pre-call): notifier disposed");
       return;

@@ -1,4 +1,5 @@
 import native_video_player
+import ImmichTailnet
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -12,6 +13,7 @@ import native_video_player
     }
 
     SwiftNativeVideoPlayerPlugin.cookieStorage = URLSessionManager.cookieStorage
+    TailnetPlugin.rebuildSession = { URLSessionManager.shared.recreateSession() }
     URLSessionManager.patchBackgroundDownloader()
     BackgroundWorkerApiImpl.registerBackgroundWorkers()
 
@@ -25,6 +27,7 @@ import native_video_player
   }
 
   public static func registerPlugins(with registry: FlutterPluginRegistry, messenger: FlutterBinaryMessenger) {
+    TailnetPlugin.register(with: registry.registrar(forPlugin: "ImmichTailnet")!)
     NativeSyncApiImpl.register(with: registry.registrar(forPlugin: NativeSyncApiImpl.name)!)
     PermissionApiSetup.setUp(binaryMessenger: messenger, api: PermissionApiImpl())
     LocalImageApiSetup.setUp(binaryMessenger: messenger, api: LocalImageApiImpl())

@@ -36,6 +36,7 @@ import 'package:immich_ui/immich_ui.dart';
 import 'package:logging/logging.dart';
 import 'package:openapi/api.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:immich_mobile/tailnet/tailnet_settings.dart';
 
 class LoginForm extends HookConsumerWidget {
   LoginForm({super.key});
@@ -450,6 +451,7 @@ class LoginForm extends HookConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.max,
               children: [
+                const TailnetSettings(),
                 ImmichForm(
                   onSubmit: getServerAuthSettings,
                   submitText: context.t.next,
