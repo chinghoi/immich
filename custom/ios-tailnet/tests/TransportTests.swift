@@ -28,6 +28,7 @@ final class TransportTests: XCTestCase {
     let session = URLSession(configuration: configuration, delegate: trust, delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     let target = fixture["target"]!
+    try await waitForTailnetFixture(session, target: target)
 
     var login = URLRequest(url: URL(string: target + "/api/auth/login")!)
     login.httpMethod = "POST"
@@ -137,6 +138,34 @@ final class TransportTests: XCTestCase {
     let (data, response) = try await URLSession.shared.data(for: authorized(fixture["plainTarget"]! + "/api/assets/original"))
     XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
     XCTAssertEqual(data.count, 8192)
+  }
+
+  /// Wait for the disposable peer to become reachable through the real SOCKS5
+  /// path. tsnet.up() can return while its control-plane login is still settling.
+  private func waitForTailnetFixture(_ session: URLSession, target: String) async throws {
+    let deadline = Date().addingTimeInterval(30)
+    var lastFailure = "no response"
+
+    while Date() < deadline {
+      var request = URLRequest(url: URL(string: target + "/api/ready")!)
+      request.timeoutInterval = 2
+      do {
+        let (_, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 204 {
+          return
+        }
+        lastFailure = "unexpected HTTP status \((response as? HTTPURLResponse)?.statusCode ?? -1)"
+      } catch {
+        lastFailure = error.localizedDescription
+      }
+      if Date() < deadline {
+        try await Task.sleep(nanoseconds: 250_000_000)
+      }
+    }
+
+    throw NSError(domain: "TailnetTransportTests.Readiness", code: 1,
+      userInfo: [NSLocalizedDescriptionKey:
+        "Tailnet fixture did not become reachable within 30 seconds; last attempt: \(lastFailure)"])
   }
 
   private func authorized(_ address: String) -> URLRequest {

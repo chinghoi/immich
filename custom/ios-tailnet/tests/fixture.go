@@ -52,6 +52,10 @@ func main() {
      http.SetCookie(w, &http.Cookie{Name:"immich_access_token",Value:"fixture-only",Path:"/"})
      w.Header().Set("Content-Type","application/json"); fmt.Fprint(w,`{"accessToken":"fixture-only"}`); return
    }
+   if r.URL.Path == "/api/ready" {
+     w.WriteHeader(http.StatusNoContent)
+     return
+   }
    cookie, _ := r.Cookie("immich_access_token")
    if (cookie == nil || cookie.Value != "fixture-only") && r.Header.Get("Authorization") != "Bearer fixture-only" {
      http.Error(w,"unauthorized",401); return
