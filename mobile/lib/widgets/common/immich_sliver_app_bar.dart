@@ -20,6 +20,8 @@ import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/asset_viewer/cast_dialog.dart';
 import 'package:immich_mobile/widgets/common/app_bar_dialog/app_bar_dialog.dart';
+import 'package:immich_mobile/tailnet/tailnet_session.dart';
+import 'package:immich_mobile/utils/url_helper.dart';
 import 'package:immich_mobile/widgets/common/user_circle_avatar.dart';
 
 class ImmichSliverAppBar extends ConsumerWidget {
@@ -74,6 +76,7 @@ class ImmichSliverAppBar extends ConsumerWidget {
                 icon: Icon(isCasting ? Icons.cast_connected_rounded : Icons.cast_rounded),
               ),
             ...?actions,
+            if (showUploadButton && defaultTargetPlatform == TargetPlatform.iOS) const _TailnetStatusIndicator(),
             if (showUploadButton && !isReadonlyModeEnabled) const _BackupIndicator(),
             const _ProfileIndicator(),
             const SizedBox(width: 8),
@@ -171,6 +174,170 @@ class _ProfileIndicator extends ConsumerWidget {
 }
 
 const double _kBadgeWidgetSize = 30.0;
+
+
+class _TailnetStatusIndicator extends StatefulWidget {
+  const _TailnetStatusIndicator();
+
+  @override
+  State<_TailnetStatusIndicator> createState() => _TailnetStatusIndicatorState();
+}
+
+class _TailnetStatusIndicatorState extends State<_TailnetStatusIndicator> with WidgetsBindingObserver {
+  Map<String, dynamic> _status = const {'enabled': false, 'state': 'Loading', 'targetRoute': 'Unlinked'};
+  Timer? _timer;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refresh());
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_refresh()));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refresh());
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    _refreshing = true;
+    try {
+      final serverHost = Uri.tryParse(getServerUrl() ?? '')?.host;
+      final status = await TailnetSession.status(serverHost: serverHost);
+      if (mounted) {
+        setState(() => _status = status);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _status = const {'enabled': true, 'state': 'Unavailable'});
+      }
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  _TailnetStatusView _view() {
+    final enabled = _status['enabled'] == true;
+    final state = _status['state'] as String? ?? 'Unavailable';
+    if (!enabled || state == 'Disabled' || state == 'Stopped' || state == 'NoState') {
+      return const _TailnetStatusView(
+        label: '未链接',
+        detail: '内嵌 Tailscale 尚未连接。检查设置中的授权状态和当前服务器地址。',
+        icon: Icons.link_off_rounded,
+        color: Colors.grey,
+      );
+    }
+    if (state == 'NeedsLogin') {
+      return const _TailnetStatusView(
+        label: '等待授权',
+        detail: '此设备尚未完成 Tailscale 授权。请在网络设置中完成授权。',
+        icon: Icons.login_rounded,
+        color: Colors.orange,
+      );
+    }
+    if (state == 'NeedsMachineAuth') {
+      return const _TailnetStatusView(
+        label: '等待批准',
+        detail: '此设备等待 Tailscale 管理员批准。',
+        icon: Icons.admin_panel_settings_outlined,
+        color: Colors.orange,
+      );
+    }
+    if (state == 'Unavailable') {
+      return const _TailnetStatusView(
+        label: '状态未知',
+        detail: '暂时无法读取 Tailscale 状态。打开网络设置检查连接或重连。',
+        icon: Icons.error_outline_rounded,
+        color: Colors.red,
+      );
+    }
+    if (state != 'Running') {
+      return const _TailnetStatusView(
+        label: '连接中',
+        detail: 'Tailscale 正在启动或恢复连接。',
+        icon: Icons.sync_rounded,
+        color: Colors.blue,
+      );
+    }
+
+    return switch (_status['targetRoute']) {
+      'Direct' => const _TailnetStatusView(
+        label: '直连',
+        detail: '当前 Immich 服务器通过 Tailscale 点对点直连。',
+        icon: Icons.link_rounded,
+        color: Colors.green,
+      ),
+      'Relay' => const _TailnetStatusView(
+        label: '中继',
+        detail: '当前 Immich 服务器经 Tailscale 中继连接。',
+        icon: Icons.compare_arrows_rounded,
+        color: Colors.orange,
+      ),
+      'Connecting' => const _TailnetStatusView(
+        label: '连接中',
+        detail: '已找到当前服务器的 Tailscale 节点，正在建立数据通道。',
+        icon: Icons.sync_rounded,
+        color: Colors.blue,
+      ),
+      _ => const _TailnetStatusView(
+        label: '未链接',
+        detail: '当前服务器没有通过 Tailscale 连通。请检查服务器地址，并确认 Mac 上的 Tailscale 在线。',
+        icon: Icons.link_off_rounded,
+        color: Colors.grey,
+      ),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final view = _view();
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      tooltip: 'Tailscale：${view.label}',
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Tailscale · ${view.label}'),
+          content: Text(view.detail),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了')),
+          ],
+        ),
+      ),
+      icon: Icon(view.icon, color: view.color, size: 24, semanticLabel: 'Tailscale：${view.label}'),
+    );
+  }
+}
+
+class _TailnetStatusView {
+  const _TailnetStatusView({
+    required this.label,
+    required this.detail,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String detail;
+  final IconData icon;
+  final Color color;
+}
 
 class _BackupIndicator extends ConsumerWidget {
   const _BackupIndicator();

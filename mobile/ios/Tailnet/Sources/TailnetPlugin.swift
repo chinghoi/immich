@@ -129,7 +129,9 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
           UserDefaults.standard.set(false, forKey: Self.enabledKey)
           try await Self.controller.stop(forgetIdentity: true)
           response = nil
-        case "status": response = try await Self.controller.status()
+        case "status":
+          let arguments = call.arguments as? [String: Any]
+          response = try await Self.controller.status(targetHost: arguments?["serverHost"] as? String)
         default:
           await MainActor.run { result(FlutterMethodNotImplemented) }
           return
@@ -252,17 +254,46 @@ private actor TailnetController {
     try await LocalAPIClient(localNode: node, logger: nil).startLoginInteractive()
   }
 
-  func status() async throws -> [String: Any] {
+  func status(targetHost: String?) async throws -> [String: Any] {
     await acquire(); defer { release() }
-    guard TailnetPlugin.isEnabled else { return ["enabled": false, "state": "Disabled"] }
+    guard TailnetPlugin.isEnabled else {
+      return ["enabled": false, "state": "Disabled", "targetRoute": "Unlinked"]
+    }
     try await prepareUnlocked()
     guard let node else { throw TailnetFailure.invalidState }
     let data = try await node.statusJSON()
     let status = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     // Deliberately whitelist fields; statusJSON also contains detailed tailnet data.
     return ["enabled": true, "state": status["BackendState"] as? String ?? "Starting",
+            "targetRoute": targetRoute(for: targetHost, status: status),
             "authURL": status["AuthURL"] as? String ?? "",
             "background": "foreground-only"]
+  }
+
+  /// Report the path to the server currently configured in Immich, without
+  /// returning the rest of the tailnet's peer list to Flutter.
+  private func targetRoute(for targetHost: String?, status: [String: Any]) -> String {
+    let trimDots = CharacterSet(charactersIn: ".")
+    guard let targetHost = targetHost?.trimmingCharacters(in: trimDots).lowercased(),
+          !targetHost.isEmpty,
+          let peers = status["Peer"] as? [String: Any] else {
+      return "Unlinked"
+    }
+
+    let peer = peers.values.compactMap { $0 as? [String: Any] }.first { candidate in
+      let dnsName = (candidate["DNSName"] as? String ?? "")
+        .trimmingCharacters(in: trimDots).lowercased()
+      if dnsName == targetHost { return true }
+      let addresses = candidate["TailscaleIPs"] as? [String] ?? []
+      return addresses.contains { $0.lowercased() == targetHost }
+    }
+    guard let peer else { return "Unlinked" }
+
+    if !(peer["CurAddr"] as? String ?? "").isEmpty { return "Direct" }
+    if !(peer["Relay"] as? String ?? "").isEmpty ||
+       !(peer["PeerRelay"] as? String ?? "").isEmpty { return "Relay" }
+    if peer["Online"] as? Bool == true { return "Connecting" }
+    return "Unlinked"
   }
 
   func checkLoopback() async throws {

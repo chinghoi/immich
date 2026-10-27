@@ -35,8 +35,12 @@ class TailnetSession {
   static Future<bool> get enabled async =>
       defaultTargetPlatform == TargetPlatform.iOS && (await channel.invokeMethod<bool>('enabled') ?? false);
 
-  static Future<Map<String, dynamic>> status() async =>
-      await channel.invokeMapMethod<String, dynamic>('status') ?? {'enabled': false, 'state': 'Disabled'};
+  static Future<Map<String, dynamic>> status({String? serverHost}) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'status',
+        serverHost == null ? null : {'serverHost': serverHost},
+      ) ??
+      {'enabled': false, 'state': 'Disabled', 'targetRoute': 'Unlinked'};
 
   static Future<void> action(String action) => channel.invokeMethod<void>(action);
 
