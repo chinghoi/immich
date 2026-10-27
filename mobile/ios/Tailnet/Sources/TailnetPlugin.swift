@@ -145,7 +145,7 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   }
 }
 
-private enum TailnetFailure: Error { case disabled, invalidState }
+private enum TailnetFailure: Error { case disabled, invalidState, startupTimedOut }
 
 private struct SilentTailnetLogger: LogSink {
   let logFileHandle: Int32? = -1 // libtailscale explicitly maps -1 to logger.Discard
@@ -181,8 +181,51 @@ private actor TailnetController {
   }
 
   func prepare() async throws {
-    await acquire(); defer { release() }
-    try await prepareUnlocked()
+    await acquire()
+    do {
+      try await prepareUnlocked()
+    } catch {
+      release()
+      throw error
+    }
+    release()
+    try await waitForReady()
+  }
+
+  /// NetworkRepository calls prepare before using the shared URLSession. Wait
+  /// for a saved tailnet identity to finish starting, so splash-session requests
+  /// don't hit the SOCKS listener before it can route them. Return at auth gates
+  /// so the UI remains available to authorize or approve this device.
+  private func waitForReady(timeout: TimeInterval = 15) async throws {
+    guard TailnetPlugin.isEnabled else { return }
+    let deadline = Date().addingTimeInterval(timeout)
+
+    while Date() < deadline {
+      await acquire()
+      guard let node else {
+        release()
+        throw TailnetFailure.invalidState
+      }
+
+      let state: String?
+      do {
+        let data = try await node.statusJSON()
+        let status = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        state = status?["BackendState"] as? String
+      } catch {
+        release()
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        continue
+      }
+      release()
+
+      if state == "Running" || state == "NeedsLogin" || state == "NeedsMachineAuth" {
+        return
+      }
+      try await Task.sleep(nanoseconds: 250_000_000)
+    }
+
+    throw TailnetFailure.startupTimedOut
   }
 
   private func prepareUnlocked() async throws {
