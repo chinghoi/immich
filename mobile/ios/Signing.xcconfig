@@ -15,15 +15,15 @@ IMMICH_TEAM_ID = 94D2Z77P4V
 
 // Root bundle identifier for the Release configuration.
 // Extension suffixes (`.ShareExtension`/`.Widget`) will be appended
-IMMICH_BUNDLE_ID_PROD = com.yzkhub.immich
+IMMICH_BUNDLE_ID_PROD = com.test.immich
 
 // Root bundle identifier for the Debug and Profile configurations.
 // Build scheme suffixes (`.debug`/`.profile`) will be appended
-IMMICH_BUNDLE_ID_DEV = com.yzkhub.immich
+IMMICH_BUNDLE_ID_DEV = com.test.immich
 
 // Root App Group identifier.
 // Build scheme suffixes (`.debug`/`.profile`) will be appended
-IMMICH_GROUP_ID = group.com.yzkhub.immich
+IMMICH_GROUP_ID = group.com.test.immich
 
 // Optional per-developer configuration override
 #include? "Signing.local.xcconfig"
