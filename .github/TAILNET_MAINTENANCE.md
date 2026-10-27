@@ -9,7 +9,7 @@ Without an optional TAILNET_SYNC_TOKEN, the GitHub cron therefore only discovers
 main/stable changes and reports its mode explicitly. It does not claim promotion.
 
 An authorized ChatGPT task has been created and enabled to check every 6 hours and
-use the existing GitHub plugin for writes. Its first scheduled run has not occurred.
+use the existing GitHub plugin for writes. Maintenance checks and repairs have executed.
 It must verify the exact candidate commit passed all Tailnet iOS checks before a
 non-forced fast-forward. Failed/conflicted work preserves the last good version.
 
@@ -18,5 +18,9 @@ TAILNET_SYNC_TOKEN restricted to this repository with Contents, Workflows,
 Pull requests and Actions read/write permissions. Never put the token in source.
 
 No Apple signing, TestFlight, App Store publication or home-server upgrade occurs.
+Apple signing certificates and private keys must NEVER enter GitHub Actions,
+including Secrets, logs, caches or artifacts. CI only produces unsigned packages.
+This supersedes any earlier suggestion of a future CI signing job.
+See [verified IPA identifiers and signing audit](TAILNET_SIGNING.md).
 Details and actual verification records:
 https://github.com/chinghoi/immich/tree/ios/tailscale/custom/ios-tailnet
