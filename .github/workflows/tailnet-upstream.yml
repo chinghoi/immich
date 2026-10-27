@@ -1,0 +1,64 @@
+name: Tailnet upstream maintenance
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/tailnet-upstream.yml', '.github/scripts/tailnet-*.sh']
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Tailnet iOS']
+    types: [completed]
+concurrency:
+  group: tailnet-maintenance
+  cancel-in-progress: false
+permissions: {}
+env:
+  TAILNET_WORKFLOW_WRITE: ${{ secrets.TAILNET_SYNC_TOKEN != '' }}
+jobs:
+  discover:
+    if: github.repository == 'chinghoi/immich' && github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
+      - name: Discover main and merge stable releases into isolated candidates
+        env:
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
+        run: bash .github/scripts/tailnet-sync.sh
+      - name: Verify bot workflow-write and PR-create permissions without merging code
+        if: always() && github.event_name == 'push' && env.TAILNET_WORKFLOW_WRITE == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
+        run: bash .github/scripts/tailnet-permissions-check.sh
+  promote:
+    if: >-
+      github.repository == 'chinghoi/immich' && github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'sync/tailnet-v') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Promote only the exact fully validated candidate
+        env:
+          GH_TOKEN: ${{ secrets.TAILNET_SYNC_TOKEN || github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: bash .github/scripts/tailnet-promote.sh

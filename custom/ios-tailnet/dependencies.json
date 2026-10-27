@@ -1,0 +1,7 @@
+{
+  "immichTag": "v3.3.5",
+  "immichCommit": "8303cb117e197c700332b33b61b45314c9cc5bb4",
+  "libtailscaleCommit": "d1dc45d039edb7759ecbee6ba2aea0c4bca884b8",
+  "go": "1.27.1",
+  "minimumIOS": "18.1"
+}

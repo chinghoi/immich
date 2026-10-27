@@ -25,6 +25,7 @@ import 'package:immich_mobile/providers/view_intent/view_intent_handler.provider
 import 'package:immich_mobile/providers/websocket.provider.dart';
 import 'package:immich_mobile/repositories/permission.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/tailnet/tailnet_settings.dart';
 import 'package:immich_mobile/utils/provider_utils.dart';
 import 'package:immich_mobile/utils/semver.dart';
 import 'package:immich_mobile/utils/url_helper.dart';
@@ -450,6 +451,8 @@ class LoginForm extends HookConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.max,
               children: [
+                const TailnetSettings(),
+                const SizedBox(height: ImmichSpacing.md),
                 ImmichForm(
                   onSubmit: getServerAuthSettings,
                   submitText: context.t.next,

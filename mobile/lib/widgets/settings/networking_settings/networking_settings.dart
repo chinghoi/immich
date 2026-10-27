@@ -8,6 +8,7 @@ import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/models/auth/auxilary_endpoint.model.dart';
 import 'package:immich_mobile/providers/infrastructure/settings.provider.dart';
 import 'package:immich_mobile/providers/network.provider.dart';
+import 'package:immich_mobile/tailnet/tailnet_settings.dart';
 import 'package:immich_mobile/utils/url_helper.dart';
 import 'package:immich_mobile/widgets/settings/networking_settings/external_network_preference.dart';
 import 'package:immich_mobile/widgets/settings/networking_settings/local_network_preference.dart';
@@ -103,6 +104,7 @@ class NetworkingSettings extends HookConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 96),
       children: <Widget>[
+        const TailnetSettings(),
         const SizedBox(height: 8),
         SettingGroupTitle(
           title: context.t.current_server_address,

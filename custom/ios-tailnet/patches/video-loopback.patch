@@ -1,0 +1,49 @@
+--- a/ios/Classes/VideoProxyServer.swift
++++ b/ios/Classes/VideoProxyServer.swift
+@@ -10,6 +10,7 @@
+     private var listener: NWListener?
+     private let queue = DispatchQueue(label: "video.proxy", qos: .userInitiated)
+     private var port: UInt16 = 0
++    private let accessToken = UUID().uuidString
+     private var activeConnections = Set<ProxyConnection>()
+ 
+     private init() {
+@@ -36,7 +37,7 @@
+         components.scheme = "http"
+         components.host = "127.0.0.1"
+         components.port = Int(port)
+-        components.path = "/\(scheme)/\(hostPort)\(originalURL.path.isEmpty ? "/" : originalURL.path)"
++        components.path = "/\(accessToken)/\(scheme)/\(hostPort)\(originalURL.path.isEmpty ? "/" : originalURL.path)"
+         components.percentEncodedQuery = originalURL.query
+         return components.url
+     }
+@@ -46,7 +47,9 @@
+         listener = nil
+ 
+         let port = port > 0 ? NWEndpoint.Port(rawValue: port) ?? .any : .any
+-        let nwListener = try NWListener(using: .tcp, on: port)
++        let parameters = NWParameters.tcp
++        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
++        let nwListener = try NWListener(using: parameters)
+         let semaphore = DispatchSemaphore(value: 0)
+         var startError: Error?
+         nwListener.stateUpdateHandler = { [weak self, weak nwListener] state in
+@@ -72,14 +75,13 @@
+ 
+     /// Reconstructs the original URL from a proxy request target (e.g. `/https/host:port/path?q=1`).
+     fileprivate func originalURL(fromRequestTarget target: String) -> URL? {
++        let prefix = "/\(accessToken)/"
++        guard target.hasPrefix(prefix) else { return nil }
++        let target = "/" + String(target.dropFirst(prefix.count))
+         let pathQuery = target.split(separator: "?", maxSplits: 1)
+         let segments = pathQuery[0].dropFirst().split(separator: "/", maxSplits: 2)
+         guard segments.count >= 2 else { return nil }
+-        let hostParts = segments[1].split(separator: ":", maxSplits: 1)
+-        var components = URLComponents()
+-        components.scheme = String(segments[0])
+-        components.host = String(hostParts[0])
+-        components.port = hostParts.count > 1 ? Int(hostParts[1]) : nil
++        guard var components = URLComponents(string: "\(segments[0])://\(segments[1])") else { return nil }
+         components.percentEncodedPath = segments.count > 2 ? "/\(segments[2])" : "/"
+         components.percentEncodedQuery = pathQuery.count > 1 ? String(pathQuery[1]) : nil
+         return components.url

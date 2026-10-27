@@ -1,5 +1,6 @@
 import Foundation
 import native_video_player
+import ImmichTailnet
 
 let CLIENT_CERT_LABEL = "app.alextran.immich.client_identity"
 let HEADERS_KEY = "immich.request_headers"
@@ -77,7 +78,13 @@ class URLSessionManager: NSObject {
   }
 
   func recreateSession() {
+    // Mode changes and stale loopback recovery must cancel old transport work.
+    // Dart holds a stable forwarding client and reacquires the replacement.
+    let previous = session
     session = Self.buildSession(delegate: delegate)
+    previous.invalidateAndCancel()
+    VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? session : nil
+    NotificationCenter.default.post(name: TailnetPlugin.transportChanged, object: nil)
   }
 
   static func setServerUrls(_ urls: [String]) {
@@ -146,16 +153,22 @@ class URLSessionManager: NSObject {
 
   private static func buildSession(delegate: URLSessionManagerDelegate) -> URLSession {
     let config = URLSessionConfiguration.default
+    configure(config)
+    return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+  }
+
+  /// Single policy boundary for API, images, WebSocket, transfers and video.
+  static func configure(_ config: URLSessionConfiguration) {
     config.urlCache = urlCache
     config.httpCookieStorage = cookieStorage
     config.httpMaximumConnectionsPerHost = 64
     config.timeoutIntervalForRequest = 60
+    TailnetPlugin.configure(config)
 
     var headers = UserDefaults.group.dictionary(forKey: HEADERS_KEY) as? [String: String] ?? [:]
     headers["User-Agent"] = headers["User-Agent"] ?? userAgent
     config.httpAdditionalHeaders = headers
 
-    return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
   }
 
   /// Patches background_downloader's URLSession to use shared auth configuration.
