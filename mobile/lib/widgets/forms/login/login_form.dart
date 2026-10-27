@@ -452,6 +452,7 @@ class LoginForm extends HookConsumerWidget {
               mainAxisSize: MainAxisSize.max,
               children: [
                 const TailnetSettings(),
+                const SizedBox(height: ImmichSpacing.md),
                 ImmichForm(
                   onSubmit: getServerAuthSettings,
                   submitText: context.t.next,
