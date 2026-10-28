@@ -10,6 +10,7 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static let transportChanged = Notification.Name("immich.tailnet.transportChanged")
   public static var rebuildSession: (() -> Void)?
   public static var expireTransfers: (() -> Void)?
+  public static var serverHost: (() -> String?)?
   private static var graceTask: UIBackgroundTaskIdentifier = .invalid
   private static let controller = EmbeddedNetworkController()
   private static let lock = NSLock()

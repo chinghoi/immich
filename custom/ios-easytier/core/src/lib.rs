@@ -151,7 +151,8 @@ fn status(target: &str) -> Result<String, ()> {
     };
     // Never export network secrets, peer lists, endpoint URLs, or raw errors.
     Ok(json!({"state": if info.error_msg.is_some() { "Unavailable" } else if info.running { "Running" } else { "Starting" },
-        "targetRoute":path,"protocol":protocol,"port":instance.port}).to_string())
+        "targetRoute":path,"protocol":protocol,"port":instance.port,
+        "connected": info.peers.iter().any(|peer| peer.conns.iter().any(|conn| !conn.is_closed))}).to_string())
 }
 unsafe fn argument<'a>(value: *const c_char) -> Result<&'a str, ()> {
     if value.is_null() {

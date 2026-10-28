@@ -6,6 +6,7 @@ import ImmichEasyTier
 /// The core is statically linked into the app; no executable is downloaded.
 actor EasyTierProvider: EmbeddedTransport {
   private var port: UInt16?
+  private var installed = false
 
   // Rust start/status/drop may block. They must never run on the UI executor.
   private func core<T: Sendable>(_ operation: @escaping @Sendable () -> T) async -> T {
@@ -13,22 +14,39 @@ actor EasyTierProvider: EmbeddedTransport {
   }
   func prepare() async throws {
     guard TailnetPlugin.mode == .easytier else { return }
-    if port != nil { return }
-    let options = try EasyTierConfiguration.options()
-    let started = await core { options.withCString { immich_et_start($0) } }
-    guard started > 0, let candidate = UInt16(exactly: started) else { throw TailnetFailure.invalidState }
-    port = candidate
-    let deadline = Date().addingTimeInterval(15)
-    while Date() < deadline {
-      if await listening(candidate) {
-        await TailnetPlugin.install(ProxyConfiguration(
-          socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: candidate)!)))
-        return
-      }
-      try await Task.sleep(nanoseconds: 250_000_000)
+    if installed { return }
+    if port == nil {
+      let options = try EasyTierConfiguration.options()
+      let started = await core { options.withCString { immich_et_start($0) } }
+      guard started > 0, let candidate = UInt16(exactly: started) else { throw TailnetFailure.invalidState }
+      port = candidate
     }
-    try await stop(forgetIdentity: false)
-    throw TailnetFailure.startupTimedOut
+    guard let candidate = port else { throw TailnetFailure.invalidState }
+    // Wait for the saved server when it belongs to this overlay's /24. An old
+    // Tailscale/public URL must not prevent opening the recovery/settings UI.
+    let host = TailnetPlugin.serverHost?() ?? ""
+    let ownIP = (try EasyTierConfiguration.load())?["ipv4"] as? String ?? ""
+    let targetParts = host.split(separator: ".")
+    let ownParts = ownIP.split(separator: ".")
+    let expected = targetParts.count == 4 && targetParts.prefix(3) == ownParts.prefix(3) ? host : ""
+    let deadline = Date().addingTimeInterval(15)
+    do {
+      while Date() < deadline {
+        if await listening(candidate), let readiness = try? await details(target: expected),
+           readiness["state"] as? String == "Running", readiness["connected"] as? Bool == true,
+           expected.isEmpty || ["Direct", "Relay"].contains(readiness["targetRoute"] as? String ?? "") {
+          await TailnetPlugin.install(ProxyConfiguration(
+            socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: candidate)!)))
+          installed = true
+          return
+        }
+        try await Task.sleep(nanoseconds: 250_000_000)
+      }
+      throw TailnetFailure.startupTimedOut
+    } catch {
+      try? await stop(forgetIdentity: false)
+      throw error
+    }
   }
   private func listening(_ port: UInt16) async -> Bool {
     await withCheckedContinuation { continuation in
@@ -69,6 +87,7 @@ actor EasyTierProvider: EmbeddedTransport {
   func stop(forgetIdentity: Bool) async throws {
     let result = await core { immich_et_stop() }
     port = nil
+    installed = false
     await TailnetPlugin.install(nil)
     guard result == 0 else { throw TailnetFailure.invalidState }
     if forgetIdentity { try EasyTierConfiguration.forget() }
@@ -78,7 +97,13 @@ actor EasyTierProvider: EmbeddedTransport {
       return ["enabled": true, "state": try EasyTierConfiguration.load() == nil ? "NeedsConfiguration" : "Unavailable",
               "targetRoute": "Unlinked", "background": "foreground-only"]
     }
-    let target = targetHost ?? ""
+    var status = try await details(target: targetHost ?? "")
+    status.removeValue(forKey: "port")
+    status["enabled"] = true
+    status["background"] = "foreground-only"
+    return status
+  }
+  private func details(target: String) async throws -> [String: Any] {
     let json: String? = await core {
       target.withCString {
         guard let pointer = immich_et_status($0) else { return nil }
@@ -87,12 +112,9 @@ actor EasyTierProvider: EmbeddedTransport {
       }
     }
     guard let json, let data = json.data(using: .utf8),
-          var status = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+          let status = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw TailnetFailure.invalidState
     }
-    status.removeValue(forKey: "port")
-    status["enabled"] = true
-    status["background"] = "foreground-only"
     return status
   }
 }

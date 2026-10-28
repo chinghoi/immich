@@ -2,7 +2,7 @@
 
 ## Contract and isolation
 
-The UI offers exactly one of `none`, `tailscale`, `easytier`. Only the selected provider can own the loopback proxy. Selection is persisted; the old `immich.tailnet.enabled` preference migrates to Tailscale without losing its identity. Switching stops the previous SDK, cancels old URLSession work, and prepares the next SDK. A selected provider with missing credentials or failed startup stays blocked until the user fixes it or selects ordinary networking. There is no automatic fallback from a selected provider to an unintended provider.
+The UI offers exactly one of `none`, `tailscale`, `easytier`. Only the selected provider can own the loopback proxy. Selection is persisted; the old `immich.tailnet.enabled` preference migrates to Tailscale without losing its identity. Switching stops the previous SDK, cancels old URLSession work, and prepares the next SDK. EasyTier startup waits for a connected peer and, when the saved server is in its configured /24, that server's route before installing the proxy. A selected provider with missing credentials or failed startup stays blocked until the user fixes it or selects ordinary networking. There is no automatic fallback from a selected provider to an unintended provider.
 
 The existing Immich HTTP, WebSocket, image, downloader, and video session integration is retained. Cookie/header/certificate handling, server compatibility, media logic and authentication are not replaced. Turning embedded networking off restores ordinary system URLSession behavior. The system VPN configuration is never created or changed; another system VPN can still affect the SDK's outer network connections.
 

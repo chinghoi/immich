@@ -20,6 +20,10 @@ import background_downloader
       URLSessionManager.configure(configuration)
       return configuration
     }
+    TailnetPlugin.serverHost = {
+      let saved = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
+      return saved.first.flatMap { URL(string: $0)?.host }
+    }
     TailnetPlugin.rebuildSession = {
       URLSessionManager.shared.recreateSession()
       UrlSessionDelegate.resetSession()

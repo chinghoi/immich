@@ -75,10 +75,12 @@ void main() {
     expect(find.text('已安全保存；留空沿用原密钥'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
+    debugDefaultTargetPlatformOverride = null;
   });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     await tester.pumpWidget(const EmbeddedNetworkSettings());
     expect(calls, isEmpty);
+    debugDefaultTargetPlatformOverride = null;
   });
 }
