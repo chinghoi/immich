@@ -121,6 +121,7 @@ void main() {
     expect(saved['tcpOnly'], isTrue);
     expect(saved['allowP2P'], isFalse);
     await tester.pumpWidget(const SizedBox.shrink());
+    debugDefaultTargetPlatformOverride = null;
   });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
