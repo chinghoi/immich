@@ -1,0 +1,15 @@
+[package]
+name = "immich-easytier"
+version = "0.1.0"
+edition = "2024"
+[lib]
+crate-type = ["staticlib", "rlib"]
+[dependencies]
+easytier = { git = "https://github.com/EasyTier/EasyTier.git", rev = "8428a89d2dabc94c97d370ec607c6ca142473626", default-features = false, features = ["socks5", "aes-gcm"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
+url = "2"
+[profile.release]
+opt-level = 2
+strip = "debuginfo"

@@ -1,0 +1,30 @@
+name: EasyTier iOS core
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: easytier-core-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install Rust and protobuf compiler
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          brew install protobuf
+      - name: Build no-TUN core and run tests
+        run: bash custom/ios-easytier/build-framework.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: easytier-ios-core
+          path: |
+            mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+            custom/ios-easytier/core/Cargo.lock
+          retention-days: 7
