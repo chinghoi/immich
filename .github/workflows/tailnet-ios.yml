@@ -23,6 +23,8 @@ jobs:
           sw_vers
           xcodebuild -version
           ls /Applications | sort
+      - name: Test exclusive provider switching and failure recovery
+        run: bash custom/ios-easytier/test-selector.sh
       - name: Go toolchain (matches pinned libtailscale go.mod)
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
@@ -81,8 +83,21 @@ jobs:
       - name: Analyze transport and run regression tests
         working-directory: mobile
         run: |
+          dart format lib/embedded_network lib/tailnet test/tailnet lib/widgets/common/immich_sliver_app_bar.dart
           dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart
           flutter test test/tailnet
+      - name: Upload normalized transport sources and Rust dependency lock
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-reviewed-sources
+          path: |
+            mobile/lib/embedded_network
+            mobile/lib/tailnet
+            mobile/test/tailnet
+            mobile/lib/widgets/common/immich_sliver_app_bar.dart
+            custom/ios-easytier/core/Cargo.lock
+          retention-days: 7
       - name: Protocol integration on iOS simulator (disposable tailnet)
         timeout-minutes: 20
         run: bash custom/ios-tailnet/test-simulator.sh

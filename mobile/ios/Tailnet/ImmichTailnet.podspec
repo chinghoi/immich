@@ -12,5 +12,6 @@ Pod::Spec.new do |s|
   s.vendored_frameworks = 'Frameworks/TailscaleKit.xcframework', 'Frameworks/ImmichEasyTier.xcframework'
   s.frameworks = 'Security', 'SystemConfiguration'
   s.libraries = 'c++', 'resolv'
+  s.resource_bundles = { 'EmbeddedNetworkNotices' => ['Licenses/*'] }
   s.dependency 'Flutter'
 end

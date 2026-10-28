@@ -16,6 +16,7 @@ protocol EmbeddedTransport: Actor {
 actor EmbeddedNetworkController {
   private let tailscale = TailscaleProvider()
   private let easytier = EasyTierProvider()
+  private var owner: EmbeddedNetworkMode = .none
   private var busy = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -34,34 +35,45 @@ actor EmbeddedNetworkController {
     case .easytier: return easytier
     }
   }
+  private func activateSelected() async throws -> (any EmbeddedTransport)? {
+    let mode = TailnetPlugin.mode
+    if owner != mode {
+      // Keep ownership until stop succeeds. A retry cannot start a second SDK
+      // after a failed stop merely because the persisted selection changed.
+      try await provider(owner)?.stop(forgetIdentity: false)
+      owner = mode
+    }
+    return provider(mode)
+  }
   func select(_ mode: EmbeddedNetworkMode) async throws {
     await acquire(); defer { release() }
-    let previous = TailnetPlugin.mode
-    if previous != mode {
-      // Set selected policy BEFORE clearing the proxy: new sessions fail closed
-      // throughout startup. In off mode they regain ordinary system networking.
+    if TailnetPlugin.mode != mode {
       UserDefaults.standard.set(mode.rawValue, forKey: "immich.network.mode")
       UserDefaults.standard.set(mode == .tailscale, forKey: TailnetPlugin.enabledKey)
       await TailnetPlugin.install(nil)
-      try await provider(previous)?.stop(forgetIdentity: false)
     }
-    try await provider(mode)?.prepare()
+    let selected = try await activateSelected()
+    try await selected?.prepare()
   }
   func prepare() async throws {
     await acquire(); defer { release() }
-    try await provider(TailnetPlugin.mode)?.prepare()
+    let selected = try await activateSelected()
+    try await selected?.prepare()
   }
   func checkLoopback() async throws {
     await acquire(); defer { release() }
-    try await provider(TailnetPlugin.mode)?.checkLoopback()
+    let selected = try await activateSelected()
+    try await selected?.checkLoopback()
   }
   func reconnect() async throws {
     await acquire(); defer { release() }
-    try await provider(TailnetPlugin.mode)?.reconnect()
+    let selected = try await activateSelected()
+    try await selected?.reconnect()
   }
   func login() async throws {
     await acquire(); defer { release() }
     guard TailnetPlugin.mode == .tailscale else { throw TailnetFailure.disabled }
+    _ = try await activateSelected()
     try await tailscale.login()
   }
   func logout() async throws {
@@ -70,12 +82,15 @@ actor EmbeddedNetworkController {
     UserDefaults.standard.set("none", forKey: "immich.network.mode")
     UserDefaults.standard.set(false, forKey: TailnetPlugin.enabledKey)
     await TailnetPlugin.install(nil)
-    try await provider(previous)?.stop(forgetIdentity: true)
+    try await provider(owner)?.stop(forgetIdentity: owner == previous)
+    if owner != previous { try await provider(previous)?.stop(forgetIdentity: true) }
+    owner = .none
   }
   func status(targetHost: String?) async throws -> [String: Any] {
     await acquire(); defer { release() }
     let mode = TailnetPlugin.mode
-    var status = try await provider(mode)?.status(targetHost: targetHost) ??
+    let selected = try await activateSelected()
+    var status = try await selected?.status(targetHost: targetHost) ??
       ["enabled": false, "state": "Disabled", "targetRoute": "Unlinked"]
     status["mode"] = mode.rawValue
     return status
@@ -87,6 +102,9 @@ actor EmbeddedNetworkController {
   func saveConfiguration(_ fields: [String: Any]) async throws {
     await acquire(); defer { release() }
     try EasyTierConfiguration.save(fields)
-    if TailnetPlugin.mode == .easytier { try await easytier.reconnect() }
+    if TailnetPlugin.mode == .easytier {
+      let selected = try await activateSelected()
+      try await selected?.reconnect()
+    }
   }
 }
