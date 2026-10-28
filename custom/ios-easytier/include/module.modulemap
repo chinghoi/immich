@@ -1,4 +1,5 @@
 module ImmichEasyTier {
   header "ImmichEasyTier.h"
+  link "immich_easytier"
   export *
 }

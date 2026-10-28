@@ -86,6 +86,8 @@ jobs:
         with:
           path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
           key: ${{ steps.easytier-cache.outputs.cache-primary-key }}
+      - name: Verify native EasyTier C ABI and simulator linkage
+        run: bash custom/ios-easytier/test-native-link.sh
       - name: Setup official mobile tool versions
         uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
         with:

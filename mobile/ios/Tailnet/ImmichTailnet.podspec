@@ -1,6 +1,7 @@
 Pod::Spec.new do |s|
   s.name = 'ImmichTailnet'
   s.version = '0.1.0'
+  s.static_framework = true
   s.summary = 'Optional process-local network providers for the iOS fork'
   s.homepage = 'https://github.com/chinghoi/immich'
   s.license = { :type => 'AGPL-3.0', :file => '../../../LICENSE' }
