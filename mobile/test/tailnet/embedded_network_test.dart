@@ -13,36 +13,43 @@ void main() {
     calls.clear();
     mode = 'none';
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(EmbeddedNetworkSession.channel, (call) async {
-      calls.add(call);
-      if (call.method == 'select') {
-        mode = (call.arguments as Map)['mode'] as String;
-      }
-      if (call.method == 'enabled') {
-        return mode != 'none';
-      }
-      if (call.method == 'status') {
-        return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
-      }
-      if (call.method == 'configuration') {
-        return {'tcpOnly': true, 'hasSecret': true};
-      }
-      return null;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmbeddedNetworkSession.channel,
+      (call) async {
+        calls.add(call);
+        if (call.method == 'select') {
+          mode = (call.arguments as Map)['mode'] as String;
+        }
+        if (call.method == 'enabled') {
+          return mode != 'none';
+        }
+        if (call.method == 'status') {
+          return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
+        }
+        if (call.method == 'configuration') {
+          return {'tcpOnly': true, 'hasSecret': true};
+        }
+        return null;
+      },
+    );
   });
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(EmbeddedNetworkSession.channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmbeddedNetworkSession.channel,
+      null,
+    );
   });
   test('all three choices cross the same control boundary with distinct modes', () async {
     for (final mode in EmbeddedNetworkMode.values) {
       await EmbeddedNetworkSession.select(mode);
       expect((await EmbeddedNetworkSession.status())['mode'], mode.name);
     }
-    expect(calls.where((c) => c.method == 'select').map((c) => c.arguments),
-        [{'mode': 'none'}, {'mode': 'tailscale'}, {'mode': 'easytier'}]);
+    expect(calls.where((c) => c.method == 'select').map((c) => c.arguments), [
+      {'mode': 'none'},
+      {'mode': 'tailscale'},
+      {'mode': 'easytier'},
+    ]);
   });
   test('EasyTier uses the same foreground restriction as Tailscale', () async {
     await EmbeddedNetworkSession.select(EmbeddedNetworkMode.easytier);
@@ -61,12 +68,22 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(MaterialApp(home: MediaQuery(
-      data: const MediaQueryData(size: Size(320, 568), viewInsets: EdgeInsets.only(bottom: 260),
-        textScaler: TextScaler.linear(1.3)),
-      child: const Scaffold(body: SingleChildScrollView(
-        child: Center(child: SizedBox(width: 300, child: EmbeddedNetworkSettings())))),
-    )));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 568),
+            viewInsets: EdgeInsets.only(bottom: 260),
+            textScaler: TextScaler.linear(1.3),
+          ),
+          child: const Scaffold(
+            body: SingleChildScrollView(
+              child: Center(child: SizedBox(width: 300, child: EmbeddedNetworkSettings())),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.text('保存并连接'));

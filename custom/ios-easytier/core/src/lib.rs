@@ -274,12 +274,19 @@ mod tests {
         let relay_socket = TcpListener::bind("127.0.0.1:0").unwrap();
         let relay_port = relay_socket.local_addr().unwrap().port();
         drop(relay_socket);
-        let relay_text = format!("ipv4 = '10.77.23.254/24'\nlisteners = ['tcp://127.0.0.1:{relay_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[[peer]]\nuri = 'tcp://127.0.0.1:{peer_port}'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\ndisable_p2p = true\n");
+        let relay_text = format!(
+            "ipv4 = '10.77.23.254/24'\nlisteners = ['tcp://127.0.0.1:{relay_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[[peer]]\nuri = 'tcp://127.0.0.1:{peer_port}'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\ndisable_p2p = true\n"
+        );
         let relay = NetworkInstanceManager::new();
         {
             let _entered = RUNTIME.enter();
-            relay.run_network_instance(TomlConfigLoader::new_from_str(&relay_text).unwrap(),
-                true, ConfigFileControl::STATIC_CONFIG).unwrap();
+            relay
+                .run_network_instance(
+                    TomlConfigLoader::new_from_str(&relay_text).unwrap(),
+                    true,
+                    ConfigFileControl::STATIC_CONFIG,
+                )
+                .unwrap();
         }
         for (path_port, expected_route) in [(peer_port, "Direct"), (relay_port, "Relay")] {
             let mut opts = options();
@@ -287,7 +294,9 @@ mod tests {
             let port = start(opts).unwrap();
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
-                if serde_json::from_str::<serde_json::Value>(&status("10.77.23.1").unwrap()).unwrap()["targetRoute"] == expected_route
+                if serde_json::from_str::<serde_json::Value>(&status("10.77.23.1").unwrap())
+                    .unwrap()["targetRoute"]
+                    == expected_route
                 {
                     break;
                 }
@@ -330,7 +339,9 @@ mod tests {
         }
         {
             let _entered = RUNTIME.enter();
-            relay.delete_network_instance(relay.list_network_instance_ids()).unwrap();
+            relay
+                .delete_network_instance(relay.list_network_instance_ids())
+                .unwrap();
             server
                 .delete_network_instance(server.list_network_instance_ids())
                 .unwrap();
