@@ -44,8 +44,7 @@ class EmbeddedNetworkSession {
       ) ??
       {'enabled': false, 'state': 'Disabled', 'targetRoute': 'Unlinked'};
 
-  static Future<void> select(EmbeddedNetworkMode mode) =>
-      channel.invokeMethod<void>('select', {'mode': mode.name});
+  static Future<void> select(EmbeddedNetworkMode mode) => channel.invokeMethod<void>('select', {'mode': mode.name});
 
   static Future<Map<String, dynamic>> configuration() async =>
       await channel.invokeMapMethod<String, dynamic>('configuration') ?? {};

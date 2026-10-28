@@ -9,9 +9,8 @@ Pod::Spec.new do |s|
   s.platform = :ios, '18.1'
   s.swift_version = '5.0'
   s.source_files = 'Sources/**/*.swift'
-  s.vendored_frameworks = 'Frameworks/TailscaleKit.xcframework', 'Frameworks/ImmichEasyTier.xcframework'
-  s.frameworks = 'Security', 'SystemConfiguration'
-  s.libraries = 'c++', 'resolv'
+  s.vendored_frameworks = 'Frameworks/TailscaleKit.xcframework'
   s.resource_bundles = { 'EmbeddedNetworkNotices' => ['Licenses/*'] }
+  s.dependency 'ImmichEasyTierCore'
   s.dependency 'Flutter'
 end

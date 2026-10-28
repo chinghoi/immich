@@ -14,6 +14,7 @@ Source ownership:
 - `TailscaleProvider.swift`: Tailscale SDK and identity. No EasyTier dependency.
 - `EasyTierProvider.swift`, `EasyTierConfiguration.swift`: EasyTier adapter and device-local Keychain configuration. No Tailscale dependency.
 - `custom/ios-easytier/core/`: small Rust C ABI around pinned upstream EasyTier, without TUN, root, or NetworkExtension.
+- \`mobile/ios/EasyTierCore/\`: separate SDK pod and framework, with no dependency on Tailscale.
 - The upstream app bar contains one imported status widget, rather than an inline provider implementation.
 
 Keep fork changes at these seams when merging a new stable Immich tag. The existing upstream-maintenance process still targets the established Tailscale branch; this candidate branch is not silently promoted. After validation/merge, the same maintenance workflow picks up these modules. Review the URLSession/downloader/video hooks and rerun protocol tests after every upstream update.
@@ -40,9 +41,9 @@ Both SDKs run inside the Immich process. iOS may suspend/terminate it; they cann
 
 - EasyTier v2.6.4, commit `8428a89d2dabc94c97d370ec607c6ca142473626`.
 - Upstream's iOS source requires the TUN/MagicDNS compilation features. The adapter never supplies a TUN descriptor, forces runtime no-TUN mode, and does not accept system DNS configuration. These build features do not create a VPN or change system routes.
-- Cloud-only Rust builds produce static XCFramework slices for arm64 iOS and arm64 simulator.
+- Cloud-only Rust builds produce static XCFramework slices for arm64 iOS and universal arm64/x86_64 simulator.
 - Cloud builds stay unsigned; Apple identities, private keys and provisioning profiles remain on the signing Mac.
-- Rust tests cover malformed input/config injection boundaries, a real two-peer encrypted TCP path through loopback SOCKS, HTTP Range byte integrity, and stop/restart.
+- Rust tests cover malformed input/config injection boundaries, real direct and two-hop relay encrypted TCP paths through loopback SOCKS, HTTP Range byte integrity, and stop/restart.
 - Flutter regressions cover all three mode requests and foreground restrictions; existing Tailscale simulator protocol tests remain required.
 - Unsigned app builds validate native linkage. They do not establish device performance, suspension reliability, or real home/phone connectivity.
 

@@ -38,6 +38,6 @@ jobs:
         with:
           name: easytier-ios-core
           path: |
-            mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+            mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
             custom/ios-easytier/core/Cargo.lock
           retention-days: 7

@@ -16,8 +16,12 @@ void main() {
       call,
     ) async {
       calls.add(call.method);
-      if (call.method == 'enabled') return enabled;
-      if (call.method == 'status') return {'enabled': enabled, 'state': 'NeedsLogin'};
+      if (call.method == 'enabled') {
+        return enabled;
+      }
+      if (call.method == 'status') {
+        return {'enabled': enabled, 'state': 'NeedsLogin'};
+      }
       return null;
     });
   });

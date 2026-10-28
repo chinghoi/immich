@@ -16,10 +16,18 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(EmbeddedNetworkSession.channel, (call) async {
       calls.add(call);
-      if (call.method == 'select') mode = (call.arguments as Map)['mode'] as String;
-      if (call.method == 'enabled') return mode != 'none';
-      if (call.method == 'status') return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
-      if (call.method == 'configuration') return {'tcpOnly': true, 'hasSecret': true};
+      if (call.method == 'select') {
+        mode = (call.arguments as Map)['mode'] as String;
+      }
+      if (call.method == 'enabled') {
+        return mode != 'none';
+      }
+      if (call.method == 'status') {
+        return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
+      }
+      if (call.method == 'configuration') {
+        return {'tcpOnly': true, 'hasSecret': true};
+      }
       return null;
     });
   });

@@ -52,7 +52,7 @@ jobs:
         id: easytier-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+          path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
           key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock', 'custom/ios-easytier/core/rust-toolchain.toml', 'custom/ios-easytier/core/src/**', 'custom/ios-easytier/include/**', 'custom/ios-easytier/build-framework.sh') }}
       - name: Restore EasyTier compiler cache
         id: easytier-rust-cache
@@ -84,7 +84,7 @@ jobs:
         if: steps.easytier-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+          path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
           key: ${{ steps.easytier-cache.outputs.cache-primary-key }}
       - name: Setup official mobile tool versions
         uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
@@ -103,7 +103,8 @@ jobs:
         working-directory: mobile
         run: |
           dart format lib/embedded_network lib/tailnet test/tailnet lib/widgets/common/immich_sliver_app_bar.dart
-          dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart
+          set -o pipefail
+          dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart 2>&1 | tee "$RUNNER_TEMP/tailnet-analysis.log"
           flutter test test/tailnet
       - name: Upload normalized transport sources and Rust dependency lock
         if: always()
@@ -123,7 +124,7 @@ jobs:
         run: bash custom/ios-tailnet/test-simulator.sh
       - name: Build simulator app (no signing)
         id: simulator-build
-        if: always() && steps.mobile-dependencies.outcome == 'success'
+        if: ${{ !cancelled() && steps.mobile-dependencies.outcome == 'success' }}
         working-directory: mobile
         run: |
           set -o pipefail
@@ -131,7 +132,7 @@ jobs:
           flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
       - name: Build device app (unsigned, cannot install directly)
         id: device-build
-        if: always() && steps.mobile-dependencies.outcome == 'success'
+        if: ${{ !cancelled() && steps.mobile-dependencies.outcome == 'success' }}
         working-directory: mobile
         run: |
           set -o pipefail

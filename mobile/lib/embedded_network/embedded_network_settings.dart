@@ -44,7 +44,9 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
   Future<void> _load() async {
     try {
       final fields = await EmbeddedNetworkSession.configuration();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       _name.text = fields['networkName'] as String? ?? '';
       _peer.text = fields['peer'] as String? ?? '';
       _ip.text = fields['ipv4'] as String? ?? '';
@@ -53,33 +55,47 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
         _tcpOnly = fields['tcpOnly'] != false;
       });
     } catch (_) {
-      if (mounted) setState(() => _error = '无法读取 EasyTier 配置，请解锁手机后重试。');
+      if (mounted) {
+        setState(() => _error = '无法读取 EasyTier 配置，请解锁手机后重试。');
+      }
     }
     await _refresh();
   }
   Future<void> _refresh() async {
-    if (_refreshing) return;
+    if (_refreshing) {
+      return;
+    }
     _refreshing = true;
     try {
       final status = await EmbeddedNetworkSession.status();
-      if (mounted) setState(() => _status = status);
+      if (mounted) {
+        setState(() => _status = status);
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = '无法读取网络状态，请重连后重试。');
+      if (mounted) {
+        setState(() => _error = '无法读取网络状态，请重连后重试。');
+      }
     } finally {
       _refreshing = false;
     }
   }
   Future<void> _run(Future<void> Function() operation) async {
-    if (_busy) return;
+    if (_busy) {
+      return;
+    }
     setState(() { _busy = true; _error = null; });
     try {
       await operation();
       await NetworkRepository.init();
     } catch (_) {
-      if (mounted) setState(() => _error = '操作未完成。EasyTier 请检查配置、密钥和节点是否在线；Tailscale 请检查授权。');
+      if (mounted) {
+        setState(() => _error = '操作未完成。EasyTier 请检查配置、密钥和节点是否在线；Tailscale 请检查授权。');
+      }
     } finally {
       await _refresh();
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
   Future<void> _save() async {
@@ -88,12 +104,16 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       'peer': _peer.text.trim(), 'ipv4': _ip.text.trim(), 'tcpOnly': _tcpOnly,
     });
     _secret.clear();
-    if (mounted) setState(() => _hasSecret = true);
+    if (mounted) {
+      setState(() => _hasSecret = true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform != TargetPlatform.iOS) return const SizedBox.shrink();
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return const SizedBox.shrink();
+    }
     final mode = EmbeddedNetworkMode.values.firstWhere(
       (mode) => mode.name == _status['mode'], orElse: () => EmbeddedNetworkMode.none);
     final nodeState = switch (_status['state']) {
@@ -124,7 +144,9 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               DropdownMenuItem(value: EmbeddedNetworkMode.easytier, child: Text('EasyTier')),
             ],
             onChanged: _busy ? null : (mode) {
-              if (mode != null) unawaited(_run(() => EmbeddedNetworkSession.select(mode)));
+              if (mode != null) {
+                unawaited(_run(() => EmbeddedNetworkSession.select(mode)));
+              }
             },
           ),
           const SizedBox(height: 12),
@@ -151,7 +173,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               decoration: const InputDecoration(labelText: 'EasyTier 网络名称')),
             const SizedBox(height: 12),
             TextField(controller: _secret, enabled: !_busy, obscureText: true, enableSuggestions: false, autocorrect: false,
-              decoration: InputDecoration(labelText: '网络密钥', helperText: _hasSecret ? '已安全保存；留空沿用原密钥' : '仅保存在这台手机的钥匙串')),
+              decoration: InputDecoration(labelText: '网络密钥', helperMaxLines: 2, helperText: _hasSecret ? '已安全保存；留空沿用原密钥' : '仅保存在这台手机的钥匙串')),
             const SizedBox(height: 12),
             TextField(controller: _peer, enabled: !_busy, autocorrect: false, keyboardType: TextInputType.url,
               decoration: const InputDecoration(labelText: '连接节点', hintText: 'tcp://服务器地址:11010')),

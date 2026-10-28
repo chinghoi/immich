@@ -1,7 +1,7 @@
 //! Process-local, no-TUN EasyTier adapter. Never changes system routes or DNS.
 //! The Swift adapter serializes all FFI calls on a background executor.
 use easytier::{
-    common::config::{ConfigFileControl, TomlConfigLoader},
+    common::config::{ConfigFileControl, ConfigLoader, TomlConfigLoader},
     instance_manager::NetworkInstanceManager,
 };
 use serde::Deserialize;
@@ -81,7 +81,12 @@ fn config(options: &Options, port: u16) -> Result<TomlConfigLoader, ()> {
         options.tcp_only,
         options.tcp_only,
     );
-    TomlConfigLoader::new_from_str(&text).map_err(|_| ())
+    let config = TomlConfigLoader::new_from_str(&text).map_err(|_| ())?;
+    if options.tcp_only {
+        config.set_stun_servers(Some(Vec::new()));
+        config.set_stun_servers_v6(Some(Vec::new()));
+    }
+    Ok(config)
 }
 fn start(options: Options) -> Result<u16, ()> {
     let mut active = INSTANCE.lock().map_err(|_| ())?;
@@ -220,7 +225,7 @@ mod tests {
         assert!(config(&o, 22222).is_err());
     }
     #[test]
-    fn tcp_peers_transfer_http_range_and_survive_restart() {
+    fn tcp_direct_and_relay_transfer_http_range_and_survive_restart() {
         use std::{
             io::{Read, Write},
             net::TcpStream,
@@ -230,7 +235,7 @@ mod tests {
         let http = TcpListener::bind("127.0.0.1:0").unwrap();
         let http_port = http.local_addr().unwrap().port();
         let fixture = thread::spawn(move || {
-            // One Range request per restart, over the actual encrypted TCP overlay.
+            // One Range request per path: direct TCP, then a two-hop TCP relay.
             for _ in 0..2 {
                 let (mut socket, _) = http.accept().unwrap();
                 socket
@@ -252,7 +257,7 @@ mod tests {
         let peer_port = tcp.local_addr().unwrap().port();
         drop(tcp);
         let text = format!(
-            "ipv4 = '10.77.23.1/24'\nlisteners = ['tcp://127.0.0.1:{peer_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\n"
+            "ipv4 = '10.77.23.1/24'\nlisteners = ['tcp://127.0.0.1:{peer_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\ndisable_p2p = true\n"
         );
         let server = NetworkInstanceManager::new();
         {
@@ -265,15 +270,23 @@ mod tests {
                 )
                 .unwrap();
         }
-        for _ in 0..2 {
+        let relay_socket = TcpListener::bind("127.0.0.1:0").unwrap();
+        let relay_port = relay_socket.local_addr().unwrap().port();
+        drop(relay_socket);
+        let relay_text = format!("ipv4 = '10.77.23.254/24'\nlisteners = ['tcp://127.0.0.1:{relay_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[[peer]]\nuri = 'tcp://127.0.0.1:{peer_port}'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\ndisable_p2p = true\n");
+        let relay = NetworkInstanceManager::new();
+        {
+            let _entered = RUNTIME.enter();
+            relay.run_network_instance(TomlConfigLoader::new_from_str(&relay_text).unwrap(),
+                true, ConfigFileControl::STATIC_CONFIG).unwrap();
+        }
+        for (path_port, expected_route) in [(peer_port, "Direct"), (relay_port, "Relay")] {
             let mut opts = options();
-            opts.peer = format!("tcp://127.0.0.1:{peer_port}");
+            opts.peer = format!("tcp://127.0.0.1:{path_port}");
             let port = start(opts).unwrap();
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
-                if status("10.77.23.1")
-                    .unwrap()
-                    .contains("\"targetRoute\":\"Direct\"")
+                if serde_json::from_str::<serde_json::Value>(&status("10.77.23.1").unwrap()).unwrap()["targetRoute"] == expected_route
                 {
                     break;
                 }
@@ -316,6 +329,7 @@ mod tests {
         }
         {
             let _entered = RUNTIME.enter();
+            relay.delete_network_instance(relay.list_network_instance_ids()).unwrap();
             server
                 .delete_network_instance(server.list_network_instance_ids())
                 .unwrap();
