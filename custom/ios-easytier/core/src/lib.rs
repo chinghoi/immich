@@ -15,9 +15,16 @@ use std::{
 use tokio::runtime::Runtime;
 
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap()
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap()
 });
-struct Instance { manager: NetworkInstanceManager, port: u16 }
+struct Instance {
+    manager: NetworkInstanceManager,
+    port: u16,
+}
 static INSTANCE: Mutex<Option<Instance>> = Mutex::new(None);
 
 #[derive(Deserialize)]
@@ -31,17 +38,29 @@ struct Options {
     #[serde(default = "default_tcp")]
     tcp_only: bool,
 }
-fn default_tcp() -> bool { true }
-fn quoted(value: &str) -> String { serde_json::to_string(value).unwrap() }
+fn default_tcp() -> bool {
+    true
+}
+fn quoted(value: &str) -> String {
+    serde_json::to_string(value).unwrap()
+}
 
 fn config(options: &Options, port: u16) -> Result<TomlConfigLoader, ()> {
     let peer = url::Url::parse(&options.peer).map_err(|_| ())?;
-    if !matches!(peer.scheme(), "tcp" | "udp") || peer.host_str().is_none() ||
-       peer.port().is_none() || !peer.username().is_empty() || peer.password().is_some() ||
-       peer.query().is_some() || peer.fragment().is_some() || !matches!(peer.path(), "" | "/") ||
-       (options.tcp_only && peer.scheme() != "tcp") ||
-       options.network_name.is_empty() || options.network_secret.is_empty() ||
-       options.network_name.len() > 128 || options.network_secret.len() > 1024 {
+    if !matches!(peer.scheme(), "tcp" | "udp")
+        || peer.host_str().is_none()
+        || peer.port().is_none()
+        || !peer.username().is_empty()
+        || peer.password().is_some()
+        || peer.query().is_some()
+        || peer.fragment().is_some()
+        || !matches!(peer.path(), "" | "/")
+        || (options.tcp_only && peer.scheme() != "tcp")
+        || options.network_name.is_empty()
+        || options.network_secret.is_empty()
+        || options.network_name.len() > 128
+        || options.network_secret.len() > 1024
+    {
         return Err(());
     }
     let ip: Ipv4Addr = options.ipv4.parse().map_err(|_| ())?;
@@ -52,23 +71,32 @@ fn config(options: &Options, port: u16) -> Result<TomlConfigLoader, ()> {
     // from Flutter can enable TUN, wildcard listeners, RPC, or plaintext tunnels.
     let text = format!(
         "instance_name = 'immich-ios'\ninstance_id = {}\nhostname = 'immich-ios'\nipv4 = {}\nlisteners = []\nsocks5_proxy = {}\n[network_identity]\nnetwork_name = {}\nnetwork_secret = {}\n[[peer]]\nuri = {}\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndefault_protocol = 'tcp'\nenable_encryption = true\ndisable_p2p = {}\ndisable_udp_hole_punching = {}\ndisable_tcp_hole_punching = {}\ndisable_upnp = true\naccept_dns = false\n",
-        quoted(&options.instance_id), quoted(&format!("{ip}/24")),
+        quoted(&options.instance_id),
+        quoted(&format!("{ip}/24")),
         quoted(&format!("socks5://127.0.0.1:{port}")),
-        quoted(&options.network_name), quoted(&options.network_secret), quoted(peer.as_str()),
-        options.tcp_only, options.tcp_only, options.tcp_only,
+        quoted(&options.network_name),
+        quoted(&options.network_secret),
+        quoted(peer.as_str()),
+        options.tcp_only,
+        options.tcp_only,
+        options.tcp_only,
     );
     TomlConfigLoader::new_from_str(&text).map_err(|_| ())
 }
 fn start(options: Options) -> Result<u16, ()> {
     let mut active = INSTANCE.lock().map_err(|_| ())?;
-    if active.is_some() { return Err(()); }
+    if active.is_some() {
+        return Err(());
+    }
     let reservation = TcpListener::bind("127.0.0.1:0").map_err(|_| ())?;
     let port = reservation.local_addr().map_err(|_| ())?.port();
     let cfg = config(&options, port)?;
     let _entered = RUNTIME.enter();
     let manager = NetworkInstanceManager::new();
     drop(reservation); // core owns its listener; Swift verifies SOCKS readiness
-    manager.run_network_instance(cfg, true, ConfigFileControl::STATIC_CONFIG).map_err(|_| ())?;
+    manager
+        .run_network_instance(cfg, true, ConfigFileControl::STATIC_CONFIG)
+        .map_err(|_| ())?;
     *active = Some(Instance { manager, port });
     Ok(port)
 }
@@ -76,7 +104,10 @@ fn stop() -> Result<(), ()> {
     let mut active = INSTANCE.lock().map_err(|_| ())?;
     if let Some(instance) = active.take() {
         let _entered = RUNTIME.enter();
-        instance.manager.delete_network_instance(instance.manager.list_network_instance_ids()).map_err(|_| ())?;
+        instance
+            .manager
+            .delete_network_instance(instance.manager.list_network_instance_ids())
+            .map_err(|_| ())?;
     }
     Ok(())
 }
@@ -85,20 +116,30 @@ fn status(target: &str) -> Result<String, ()> {
     let Some(instance) = active.as_ref() else {
         return Ok(json!({"state":"Disabled","targetRoute":"Unlinked"}).to_string());
     };
-    let infos = RUNTIME.block_on(instance.manager.collect_network_infos()).map_err(|_| ())?;
+    let infos = RUNTIME
+        .block_on(instance.manager.collect_network_infos())
+        .map_err(|_| ())?;
     let Some(info) = infos.values().next() else {
         return Ok(json!({"state":"Starting","targetRoute":"Connecting"}).to_string());
     };
     let route = info.routes.iter().find(|route| {
-        route.ipv4_addr.as_ref().and_then(|v| v.address.as_ref())
+        route
+            .ipv4_addr
+            .as_ref()
+            .and_then(|v| v.address.as_ref())
             .is_some_and(|v| Ipv4Addr::from(v.addr).to_string() == target)
     });
     let (path, protocol) = match route {
         Some(route) => {
             let hop = route.next_hop_peer_id;
-            let protocol = info.peers.iter().find(|p| p.peer_id == hop)
+            let protocol = info
+                .peers
+                .iter()
+                .find(|p| p.peer_id == hop)
                 .and_then(|p| p.conns.iter().find(|c| !c.is_closed))
-                .and_then(|c| c.tunnel.as_ref()).map(|t| t.tunnel_type.as_str()).unwrap_or("");
+                .and_then(|c| c.tunnel.as_ref())
+                .map(|t| t.tunnel_type.as_str())
+                .unwrap_or("");
             (if route.cost <= 1 { "Direct" } else { "Relay" }, protocol)
         }
         None => ("Unlinked", ""),
@@ -108,40 +149,65 @@ fn status(target: &str) -> Result<String, ()> {
         "targetRoute":path,"protocol":protocol,"port":instance.port}).to_string())
 }
 unsafe fn argument<'a>(value: *const c_char) -> Result<&'a str, ()> {
-    if value.is_null() { return Err(()); }
+    if value.is_null() {
+        return Err(());
+    }
     unsafe { CStr::from_ptr(value) }.to_str().map_err(|_| ())
 }
 /// Returns loopback SOCKS port, or -1. A port is not proof of network readiness.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn immich_et_start(options: *const c_char) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let options: Options = serde_json::from_str(unsafe { argument(options)? }).map_err(|_| ())?;
+        let options: Options =
+            serde_json::from_str(unsafe { argument(options)? }).map_err(|_| ())?;
         start(options).map(i32::from)
-    })).ok().and_then(Result::ok).unwrap_or(-1)
+    }))
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or(-1)
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn immich_et_stop() -> i32 {
-    if matches!(catch_unwind(AssertUnwindSafe(stop)), Ok(Ok(()))) { 0 } else { -1 }
+    if matches!(catch_unwind(AssertUnwindSafe(stop)), Ok(Ok(()))) {
+        0
+    } else {
+        -1
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn immich_et_status(target: *const c_char) -> *mut c_char {
     catch_unwind(AssertUnwindSafe(|| {
-        CString::new(status(unsafe { argument(target)? })?).map(CString::into_raw).map_err(|_| ())
-    })).ok().and_then(Result::ok).unwrap_or(std::ptr::null_mut())
+        CString::new(status(unsafe { argument(target)? })?)
+            .map(CString::into_raw)
+            .map_err(|_| ())
+    }))
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or(std::ptr::null_mut())
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn immich_et_free(value: *mut c_char) {
-    if !value.is_null() { unsafe { drop(CString::from_raw(value)); } }
+    if !value.is_null() {
+        unsafe {
+            drop(CString::from_raw(value));
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn options() -> Options { Options {
-        network_name: "test".into(), network_secret: "local-test-only".into(),
-        peer: "tcp://127.0.0.1:11010".into(), ipv4: "10.77.23.2".into(),
-        instance_id: "b60ee0cf-e733-4cdd-9937-26934bb81065".into(), tcp_only: true,
-    }}
-    #[test] fn validates_tcp_mode_and_config_boundaries() {
+    fn options() -> Options {
+        Options {
+            network_name: "test".into(),
+            network_secret: "local-test-only".into(),
+            peer: "tcp://127.0.0.1:11010".into(),
+            ipv4: "10.77.23.2".into(),
+            instance_id: "b60ee0cf-e733-4cdd-9937-26934bb81065".into(),
+            tcp_only: true,
+        }
+    }
+    #[test]
+    fn validates_tcp_mode_and_config_boundaries() {
         assert!(config(&options(), 22222).is_ok());
         let mut o = options();
         o.peer = "udp://127.0.0.1:11010".into();
@@ -153,15 +219,23 @@ mod tests {
         o.ipv4 = "127.0.0.1".into();
         assert!(config(&o, 22222).is_err());
     }
-    #[test] fn tcp_peers_transfer_http_range_and_survive_restart() {
-        use std::{io::{Read, Write}, net::TcpStream, thread, time::{Duration, Instant}};
+    #[test]
+    fn tcp_peers_transfer_http_range_and_survive_restart() {
+        use std::{
+            io::{Read, Write},
+            net::TcpStream,
+            thread,
+            time::{Duration, Instant},
+        };
         let http = TcpListener::bind("127.0.0.1:0").unwrap();
         let http_port = http.local_addr().unwrap().port();
         let fixture = thread::spawn(move || {
             // One Range request per restart, over the actual encrypted TCP overlay.
             for _ in 0..2 {
                 let (mut socket, _) = http.accept().unwrap();
-                socket.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
                 let mut request = Vec::new();
                 while !request.ends_with(b"\r\n\r\n") {
                     let mut byte = [0; 1];
@@ -177,12 +251,19 @@ mod tests {
         let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
         let peer_port = tcp.local_addr().unwrap().port();
         drop(tcp);
-        let text = format!("ipv4 = '10.77.23.1/24'\nlisteners = ['tcp://127.0.0.1:{peer_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\n");
+        let text = format!(
+            "ipv4 = '10.77.23.1/24'\nlisteners = ['tcp://127.0.0.1:{peer_port}']\n[network_identity]\nnetwork_name = 'test'\nnetwork_secret = 'local-test-only'\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndisable_upnp = true\n"
+        );
         let server = NetworkInstanceManager::new();
         {
             let _entered = RUNTIME.enter();
-            server.run_network_instance(TomlConfigLoader::new_from_str(&text).unwrap(), true,
-                ConfigFileControl::STATIC_CONFIG).unwrap();
+            server
+                .run_network_instance(
+                    TomlConfigLoader::new_from_str(&text).unwrap(),
+                    true,
+                    ConfigFileControl::STATIC_CONFIG,
+                )
+                .unwrap();
         }
         for _ in 0..2 {
             let mut opts = options();
@@ -190,12 +271,22 @@ mod tests {
             let port = start(opts).unwrap();
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
-                if status("10.77.23.1").unwrap().contains("\"targetRoute\":\"Direct\"") { break; }
-                assert!(Instant::now() < deadline, "TCP peer did not become routable");
+                if status("10.77.23.1")
+                    .unwrap()
+                    .contains("\"targetRoute\":\"Direct\"")
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "TCP peer did not become routable"
+                );
                 thread::sleep(Duration::from_millis(100));
             }
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-            stream.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(15)))
+                .unwrap();
             stream.write_all(&[5, 1, 0]).unwrap();
             let mut greeting = [0; 2];
             stream.read_exact(&mut greeting).unwrap();
@@ -206,23 +297,33 @@ mod tests {
             let mut response = [0; 10];
             stream.read_exact(&mut response).unwrap();
             assert_eq!(response[1], 0, "SOCKS connect failed");
-            stream.write_all(b"GET /video HTTP/1.1\r\nHost: fixture\r\nRange: bytes=4096-12287\r\n\r\n").unwrap();
+            stream
+                .write_all(
+                    b"GET /video HTTP/1.1\r\nHost: fixture\r\nRange: bytes=4096-12287\r\n\r\n",
+                )
+                .unwrap();
             let mut received = Vec::new();
             stream.read_to_end(&mut received).unwrap();
             let headers = received.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
             assert!(received.starts_with(b"HTTP/1.1 206"));
-            assert_eq!(&received[headers..], (4096..12288).map(|n| (n % 251) as u8).collect::<Vec<_>>());
+            assert_eq!(
+                &received[headers..],
+                (4096..12288).map(|n| (n % 251) as u8).collect::<Vec<_>>()
+            );
             drop(stream);
             stop().unwrap();
             assert!(status("").unwrap().contains("Disabled"));
         }
         {
             let _entered = RUNTIME.enter();
-            server.delete_network_instance(server.list_network_instance_ids()).unwrap();
+            server
+                .delete_network_instance(server.list_network_instance_ids())
+                .unwrap();
         }
         fixture.join().unwrap();
     }
-    #[test] fn ffi_handles_invalid_input_without_unwinding() {
+    #[test]
+    fn ffi_handles_invalid_input_without_unwinding() {
         unsafe {
             assert_eq!(immich_et_start(std::ptr::null()), -1);
             let invalid = CString::new("{}").unwrap();

@@ -46,7 +46,7 @@ jobs:
         if: steps.framework-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks
+          path: mobile/ios/Tailnet/Frameworks/TailscaleKit.xcframework
           key: ${{ steps.framework-cache.outputs.cache-primary-key }}
       - name: Restore EasyTier framework cache
         id: easytier-cache
