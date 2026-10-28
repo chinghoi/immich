@@ -1,52 +1,16 @@
-import 'dart:async';
+// Compatibility boundary for existing Immich hooks. Provider implementations
+// and UI live in embedded_network; upstream call sites need no provider logic.
+import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
+export 'package:immich_mobile/embedded_network/embedded_network_session.dart' show EmbeddedNetworkMode;
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-
-/// iOS-only control bridge. HTTP bodies, tokens and node keys do not cross it.
 class TailnetSession {
-  static const channel = MethodChannel('app.immich/tailnet');
-  static bool _listening = false;
-  static Future<void> Function()? onTransportChanged;
-
-  static Future<void> prepare() async {
-    if (defaultTargetPlatform != TargetPlatform.iOS) {
-      return;
-    }
-    if (!_listening) {
-      _listening = true;
-      channel.setMethodCallHandler((call) async {
-        if (call.method == 'transportChanged') {
-          await onTransportChanged?.call();
-        }
-      });
-    }
-    try {
-      await channel.invokeMethod<void>('prepare');
-    } on PlatformException catch (error) {
-      // Native transport remains fail-closed. Keep the UI reachable so the user
-      // can disable/reconnect instead of getting stuck at bootstrap forever.
-      if (error.code != 'TAILNET_UNAVAILABLE') {
-        rethrow;
-      }
-    }
-  }
-
-  static Future<bool> get enabled async =>
-      defaultTargetPlatform == TargetPlatform.iOS && (await channel.invokeMethod<bool>('enabled') ?? false);
-
-  static Future<Map<String, dynamic>> status({String? serverHost}) async =>
-      await channel.invokeMapMethod<String, dynamic>(
-        'status',
-        serverHost == null ? null : {'serverHost': serverHost},
-      ) ??
-      {'enabled': false, 'state': 'Disabled', 'targetRoute': 'Unlinked'};
-
-  static Future<void> action(String action) => channel.invokeMethod<void>(action);
-
-  static Future<void> requireSystemBackgroundTransport() async {
-    if (await enabled) {
-      throw StateError('Tailscale：后台自动备份已暂停，请保持 Immich 在前台或切换普通连接。');
-    }
-  }
+  static const channel = EmbeddedNetworkSession.channel;
+  static set onTransportChanged(Future<void> Function()? callback) =>
+      EmbeddedNetworkSession.onTransportChanged = callback;
+  static Future<void> prepare() => EmbeddedNetworkSession.prepare();
+  static Future<bool> get enabled => EmbeddedNetworkSession.enabled;
+  static Future<Map<String, dynamic>> status({String? serverHost}) =>
+      EmbeddedNetworkSession.status(serverHost: serverHost);
+  static Future<void> action(String action) => EmbeddedNetworkSession.action(action);
+  static Future<void> requireSystemBackgroundTransport() => EmbeddedNetworkSession.requireSystemBackgroundTransport();
 }

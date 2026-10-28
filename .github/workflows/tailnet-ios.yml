@@ -33,7 +33,7 @@ jobs:
         id: framework-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks
+          path: mobile/ios/Tailnet/Frameworks/TailscaleKit.xcframework
           key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json', 'custom/ios-tailnet/build-framework.sh', 'custom/ios-tailnet/patches/libtailscale-*.patch') }}
       - name: Build pinned TailscaleKit for device and simulator
         if: steps.framework-cache.outputs.cache-hit != 'true'
@@ -46,6 +46,25 @@ jobs:
         with:
           path: mobile/ios/Tailnet/Frameworks
           key: ${{ steps.framework-cache.outputs.cache-primary-key }}
+      - name: Restore EasyTier framework cache
+        id: easytier-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+          key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/**') }}
+      - name: Build pinned EasyTier no-TUN core
+        if: steps.easytier-cache.outputs.cache-hit != 'true'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          export PATH="$HOME/.cargo/bin:$PATH"
+          brew list protobuf >/dev/null 2>&1 || brew install protobuf
+          bash custom/ios-easytier/build-framework.sh
+      - name: Save EasyTier framework cache
+        if: steps.easytier-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
+          key: ${{ steps.easytier-cache.outputs.cache-primary-key }}
       - name: Setup official mobile tool versions
         uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
         with:
@@ -62,7 +81,7 @@ jobs:
       - name: Analyze transport and run regression tests
         working-directory: mobile
         run: |
-          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
+          dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart
           flutter test test/tailnet
       - name: Protocol integration on iOS simulator (disposable tailnet)
         timeout-minutes: 20

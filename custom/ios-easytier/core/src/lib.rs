@@ -153,6 +153,75 @@ mod tests {
         o.ipv4 = "127.0.0.1".into();
         assert!(config(&o, 22222).is_err());
     }
+    #[test] fn tcp_peers_transfer_http_range_and_survive_restart() {
+        use std::{io::{Read, Write}, net::TcpStream, thread, time::{Duration, Instant}};
+        let http = TcpListener::bind("127.0.0.1:0").unwrap();
+        let http_port = http.local_addr().unwrap().port();
+        let fixture = thread::spawn(move || {
+            // One Range request per restart, over the actual encrypted TCP overlay.
+            for _ in 0..2 {
+                let (mut socket, _) = http.accept().unwrap();
+                socket.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\\r\\n\\r\\n") {
+                    let mut byte = [0; 1];
+                    socket.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                assert!(String::from_utf8_lossy(&request).contains("Range: bytes=4096-12287"));
+                let body: Vec<u8> = (4096..12288).map(|n| (n % 251) as u8).collect();
+                socket.write_all(b"HTTP/1.1 206 Partial Content\\r\\nContent-Length: 8192\\r\\nContent-Range: bytes 4096-12287/1048576\\r\\nConnection: close\\r\\n\\r\\n").unwrap();
+                socket.write_all(&body).unwrap();
+            }
+        });
+        let tcp = TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer_port = tcp.local_addr().unwrap().port();
+        drop(tcp);
+        let text = format!("ipv4 = '10.77.23.1/24'\\nlisteners = ['tcp://127.0.0.1:{peer_port}']\\n[network_identity]\\nnetwork_name = 'test'\\nnetwork_secret = 'local-test-only'\\n[flags]\\nno_tun = true\\nuse_smoltcp = true\\nbind_device = false\\ndisable_upnp = true\\n");
+        let server = NetworkInstanceManager::new();
+        {
+            let _entered = RUNTIME.enter();
+            server.run_network_instance(TomlConfigLoader::new_from_str(&text).unwrap(), true,
+                ConfigFileControl::STATIC_CONFIG).unwrap();
+        }
+        for _ in 0..2 {
+            let mut opts = options();
+            opts.peer = format!("tcp://127.0.0.1:{peer_port}");
+            let port = start(opts).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(30);
+            loop {
+                if status("10.77.23.1").unwrap().contains("\\"targetRoute\\":\\"Direct\\"") { break; }
+                assert!(Instant::now() < deadline, "TCP peer did not become routable");
+                thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+            stream.write_all(&[5, 1, 0]).unwrap();
+            let mut greeting = [0; 2];
+            stream.read_exact(&mut greeting).unwrap();
+            assert_eq!(greeting, [5, 0]);
+            let mut request = vec![5, 1, 0, 1, 10, 77, 23, 1];
+            request.extend_from_slice(&http_port.to_be_bytes());
+            stream.write_all(&request).unwrap();
+            let mut response = [0; 10];
+            stream.read_exact(&mut response).unwrap();
+            assert_eq!(response[1], 0, "SOCKS connect failed");
+            stream.write_all(b"GET /video HTTP/1.1\\r\\nHost: fixture\\r\\nRange: bytes=4096-12287\\r\\n\\r\\n").unwrap();
+            let mut received = Vec::new();
+            stream.read_to_end(&mut received).unwrap();
+            let headers = received.windows(4).position(|w| w == b"\\r\\n\\r\\n").unwrap() + 4;
+            assert!(received.starts_with(b"HTTP/1.1 206"));
+            assert_eq!(&received[headers..], (4096..12288).map(|n| (n % 251) as u8).collect::<Vec<_>>());
+            drop(stream);
+            stop().unwrap();
+            assert!(status("").unwrap().contains("Disabled"));
+        }
+        {
+            let _entered = RUNTIME.enter();
+            server.delete_network_instance(server.list_network_instance_ids()).unwrap();
+        }
+        fixture.join().unwrap();
+    }
     #[test] fn ffi_handles_invalid_input_without_unwinding() {
         unsafe {
             assert_eq!(immich_et_start(std::ptr::null()), -1);

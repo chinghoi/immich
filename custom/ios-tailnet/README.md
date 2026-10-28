@@ -1,4 +1,6 @@
-# Immich iOS 内嵌 Tailscale 定制版
+# Immich iOS 内嵌网络定制版
+
+新增的独立 EasyTier 模块、三模式切换、凭据与地址约束见 [EasyTier 集成说明](../ios-easytier/README.md)。原有 Tailscale 身份和上游接入点保持兼容。以下原始 Tailscale 设计与历史安装说明不代表当前 Apple 团队状态；签名材料仅留在 Mac，CI 始终输出 unsigned。
 
 此 fork 只增加 iOS 入口。它把 `libtailscale` 编入 Immich 进程，使用用户态网络和经过认证的本机 SOCKS5 代理，不创建系统 VPN、NetworkExtension、Packet Tunnel 或 Funnel。Android、服务端、Web 不增加功能。定制版最低 iOS 18.1，与所固定的 TailscaleKit framework 部署目标一致。
 
