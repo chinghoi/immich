@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
@@ -45,6 +46,27 @@ void main() {
     expect(await EmbeddedNetworkSession.configuration(), {'tcpOnly': true, 'hasSecret': true});
     expect(calls.single.method, 'configuration');
     expect(calls.single.arguments, isNull);
+  });
+  testWidgets('EasyTier form stays scrollable on a small screen with keyboard and larger text', (tester) async {
+    mode = 'easytier';
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(home: MediaQuery(
+      data: const MediaQueryData(size: Size(320, 568), viewInsets: EdgeInsets.only(bottom: 260),
+        textScaler: TextScaler.linear(1.3)),
+      child: const Scaffold(body: SingleChildScrollView(
+        child: Center(child: SizedBox(width: 300, child: EmbeddedNetworkSettings())))),
+    )));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('保存并连接'));
+    await tester.pumpAndSettle();
+    expect(find.text('保存并连接'), findsOneWidget);
+    expect(find.text('已安全保存；留空沿用原密钥'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;

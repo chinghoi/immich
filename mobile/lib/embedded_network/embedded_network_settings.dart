@@ -115,10 +115,11 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           DropdownButtonFormField<EmbeddedNetworkMode>(
             initialValue: mode,
+            isExpanded: true,
             key: ValueKey(mode),
             decoration: const InputDecoration(labelText: 'App 网络通道'),
             items: const [
-              DropdownMenuItem(value: EmbeddedNetworkMode.none, child: Text('普通连接（不使用内嵌组网）')),
+              DropdownMenuItem(value: EmbeddedNetworkMode.none, child: Text('普通连接')),
               DropdownMenuItem(value: EmbeddedNetworkMode.tailscale, child: Text('Tailscale')),
               DropdownMenuItem(value: EmbeddedNetworkMode.easytier, child: Text('EasyTier')),
             ],

@@ -39,6 +39,7 @@ Both SDKs run inside the Immich process. iOS may suspend/terminate it; they cann
 ## Build, test, provenance
 
 - EasyTier v2.6.4, commit `8428a89d2dabc94c97d370ec607c6ca142473626`.
+- Upstream's iOS source requires the TUN/MagicDNS compilation features. The adapter never supplies a TUN descriptor, forces runtime no-TUN mode, and does not accept system DNS configuration. These build features do not create a VPN or change system routes.
 - Cloud-only Rust builds produce static XCFramework slices for arm64 iOS and arm64 simulator.
 - Cloud builds stay unsigned; Apple identities, private keys and provisioning profiles remain on the signing Mac.
 - Rust tests cover malformed input/config injection boundaries, a real two-peer encrypted TCP path through loopback SOCKS, HTTP Range byte integrity, and stop/restart.
