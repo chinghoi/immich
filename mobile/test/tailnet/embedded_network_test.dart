@@ -9,14 +9,19 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final calls = <MethodCall>[];
   var mode = 'none';
+  var rejectSave = false;
   setUp(() {
     calls.clear();
     mode = 'none';
+    rejectSave = false;
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       EmbeddedNetworkSession.channel,
       (call) async {
         calls.add(call);
+        if (call.method == 'saveConfiguration' && rejectSave) {
+          throw PlatformException(code: 'TEST_SAVE_FAILURE');
+        }
         if (call.method == 'select') {
           mode = (call.arguments as Map)['mode'] as String;
         }
@@ -94,11 +99,13 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
   });
-  testWidgets('TCP transport and P2P choices are saved independently', (tester) async {
+  testWidgets('connection strategy passes independent policies to the native boundary', (tester) async {
     mode = 'easytier';
-    await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(body: SingleChildScrollView(child: EmbeddedNetworkSettings())),
-    ));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: SingleChildScrollView(child: EmbeddedNetworkSettings())),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('TCP 直连优先（推荐）'));
     await tester.tap(find.text('TCP 直连优先（推荐）'));
@@ -106,6 +113,8 @@ void main() {
     await tester.tap(find.text('仅 TCP 中继').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('保存并连接'));
+    // Stop at the native configuration boundary; the widget test has no native networking SDK.
+    rejectSave = true;
     await tester.tap(find.text('保存并连接'));
     await tester.pumpAndSettle();
     final saved = calls.lastWhere((call) => call.method == 'saveConfiguration').arguments as Map;

@@ -225,16 +225,23 @@ mod tests {
         let mut relay = options();
         relay.allow_p2p = false;
         let flags = config(&relay, 22222).unwrap().get_flags();
-        assert!(flags.disable_p2p && flags.disable_tcp_hole_punching && flags.disable_udp_hole_punching);
+        assert!(
+            flags.disable_p2p && flags.disable_tcp_hole_punching && flags.disable_udp_hole_punching
+        );
         let mut automatic = options();
         automatic.tcp_only = false;
         let flags = config(&automatic, 22222).unwrap().get_flags();
-        assert!(!flags.disable_p2p && !flags.disable_tcp_hole_punching && !flags.disable_udp_hole_punching);
+        assert!(
+            !flags.disable_p2p
+                && !flags.disable_tcp_hole_punching
+                && !flags.disable_udp_hole_punching
+        );
         let mut legacy = serde_json::to_value(json!({
             "networkName": "test", "networkSecret": "local-test-only",
             "peer": "tcp://127.0.0.1:11010", "ipv4": "10.77.23.2",
             "instanceId": "b60ee0cf-e733-4cdd-9937-26934bb81065", "tcpOnly": true
-        })).unwrap();
+        }))
+        .unwrap();
         let migrated: Options = serde_json::from_value(legacy.take()).unwrap();
         assert!(migrated.allow_p2p);
     }

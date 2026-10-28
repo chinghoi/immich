@@ -235,7 +235,11 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 key: ValueKey('strategy-$_tcpOnly-$_allowP2P'),
-                initialValue: !_allowP2P ? 'relay' : _tcpOnly ? 'tcp' : 'auto',
+                initialValue: !_allowP2P
+                    ? 'relay'
+                    : _tcpOnly
+                    ? 'tcp'
+                    : 'auto',
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: '连接策略'),
                 items: const [
@@ -243,21 +247,25 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                   DropdownMenuItem(value: 'auto', child: Text('自动（允许 UDP）')),
                   DropdownMenuItem(value: 'relay', child: Text('仅 TCP 中继')),
                 ],
-                onChanged: _busy ? null : (value) {
-                  if (value != null) {
-                    setState(() {
-                      _allowP2P = value != 'relay';
-                      _tcpOnly = value != 'auto';
-                    });
-                  }
-                },
+                onChanged: _busy
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          setState(() {
+                            _allowP2P = value != 'relay';
+                            _tcpOnly = value != 'auto';
+                          });
+                        }
+                      },
               ),
               const SizedBox(height: 8),
-              Text(!_allowP2P
-                  ? '只使用所填节点中继；节点必须允许转发。'
-                  : _tcpOnly
-                      ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。保留地址探测，不传输 UDP 数据。'
-                      : '先通过节点接通，后台尝试 TCP/UDP 直连；速度取决于实际网络。'),
+              Text(
+                !_allowP2P
+                    ? '只使用所填节点中继；节点必须允许转发。'
+                    : _tcpOnly
+                    ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。保留地址探测，不传输 UDP 数据。'
+                    : '先通过节点接通，后台尝试 TCP/UDP 直连；速度取决于实际网络。',
+              ),
               TextButton(onPressed: _busy ? null : () => unawaited(_run(_save)), child: const Text('保存并连接')),
             ],
             if (mode != EmbeddedNetworkMode.none)
