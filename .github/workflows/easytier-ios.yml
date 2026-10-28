@@ -1,5 +1,7 @@
 name: EasyTier iOS core
 on:
+  push:
+    branches: ['ios/easytier']
   workflow_dispatch:
 permissions:
   contents: read

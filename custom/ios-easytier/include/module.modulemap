@@ -1,0 +1,4 @@
+module ImmichEasyTier {
+  header "ImmichEasyTier.h"
+  export *
+}
