@@ -5,6 +5,7 @@ OUT="$ROOT/mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework"
 cd "$ROOT/custom/ios-easytier/core"
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 export IPHONEOS_DEPLOYMENT_TARGET=18.1
+cargo fmt --all
 cargo test --lib
 for target in aarch64-apple-ios aarch64-apple-ios-sim; do
   cargo build --release --target "$target"

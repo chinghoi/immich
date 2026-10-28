@@ -54,6 +54,16 @@ jobs:
         with:
           path: mobile/ios/Tailnet/Frameworks/ImmichEasyTier.xcframework
           key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/**') }}
+      - name: Restore EasyTier compiler cache
+        id: easytier-rust-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            custom/ios-easytier/core/target
+          key: easytier-rust-${{ runner.os }}-${{ runner.arch }}-1.99.1-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock') }}
+          restore-keys: easytier-rust-${{ runner.os }}-${{ runner.arch }}-1.99.1-
       - name: Build pinned EasyTier no-TUN core
         if: steps.easytier-cache.outputs.cache-hit != 'true'
         run: |
@@ -61,6 +71,15 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           brew list protobuf >/dev/null 2>&1 || brew install protobuf
           bash custom/ios-easytier/build-framework.sh
+      - name: Save EasyTier compiler cache
+        if: always() && steps.easytier-rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            custom/ios-easytier/core/target
+          key: ${{ steps.easytier-rust-cache.outputs.cache-primary-key }}
       - name: Save EasyTier framework cache
         if: steps.easytier-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -97,6 +116,7 @@ jobs:
             mobile/test/tailnet
             mobile/lib/widgets/common/immich_sliver_app_bar.dart
             custom/ios-easytier/core/Cargo.lock
+            custom/ios-easytier/core/src/lib.rs
           retention-days: 7
       - name: Protocol integration on iOS simulator (disposable tailnet)
         timeout-minutes: 20
