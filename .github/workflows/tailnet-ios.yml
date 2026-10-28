@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
-          key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock', 'custom/ios-easytier/core/rust-toolchain.toml', 'custom/ios-easytier/core/src/**', 'custom/ios-easytier/include/**', 'custom/ios-easytier/build-framework.sh') }}
+          key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock', 'custom/ios-easytier/core/rust-toolchain.toml', 'custom/ios-easytier/core/src/**', 'custom/ios-easytier/include/**', 'custom/ios-easytier/build-framework.sh', 'custom/ios-easytier/patch-tcp-policy.py') }}
       - name: Restore EasyTier compiler cache
         id: easytier-rust-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9

@@ -94,6 +94,25 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
   });
+  testWidgets('TCP transport and P2P choices are saved independently', (tester) async {
+    mode = 'easytier';
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: SingleChildScrollView(child: EmbeddedNetworkSettings())),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('TCP 直连优先（推荐）'));
+    await tester.tap(find.text('TCP 直连优先（推荐）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('仅 TCP 中继').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('保存并连接'));
+    await tester.tap(find.text('保存并连接'));
+    await tester.pumpAndSettle();
+    final saved = calls.lastWhere((call) => call.method == 'saveConfiguration').arguments as Map;
+    expect(saved['tcpOnly'], isTrue);
+    expect(saved['allowP2P'], isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     await tester.pumpWidget(const EmbeddedNetworkSettings());

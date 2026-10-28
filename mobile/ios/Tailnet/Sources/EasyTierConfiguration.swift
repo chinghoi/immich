@@ -35,6 +35,7 @@ enum EasyTierConfiguration {
     let ip = (input["ipv4"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     let tcp = input["tcpOnly"] as? Bool ?? true
     let previous = try load()
+    let allowP2P = input["allowP2P"] as? Bool ?? previous?["allowP2P"] as? Bool ?? true
     let entered = input["networkSecret"] as? String ?? ""
     let secret = entered.isEmpty ? previous?["networkSecret"] as? String ?? "" : entered
     var address = in_addr()
@@ -47,7 +48,7 @@ enum EasyTierConfiguration {
       throw TailnetFailure.invalidState
     }
     let fields: [String: Any] = ["networkName": name, "networkSecret": secret,
-      "peer": peer, "ipv4": ip, "tcpOnly": tcp]
+      "peer": peer, "ipv4": ip, "tcpOnly": tcp, "allowP2P": allowP2P]
     let data = try JSONSerialization.data(withJSONObject: fields)
     let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
     if updated == errSecItemNotFound {

@@ -20,6 +20,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
   final _ip = TextEditingController();
   Timer? _timer;
   bool _tcpOnly = true;
+  bool _allowP2P = true;
   bool _hasSecret = false;
   bool _busy = false;
   bool _refreshing = false;
@@ -55,6 +56,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       setState(() {
         _hasSecret = fields['hasSecret'] == true;
         _tcpOnly = fields['tcpOnly'] != false;
+        _allowP2P = fields['allowP2P'] != false;
       });
     } catch (_) {
       if (mounted) {
@@ -113,6 +115,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       'peer': _peer.text.trim(),
       'ipv4': _ip.text.trim(),
       'tcpOnly': _tcpOnly,
+      'allowP2P': _allowP2P,
     });
     _secret.clear();
     if (mounted) {
@@ -229,13 +232,32 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 autocorrect: false,
                 decoration: const InputDecoration(labelText: '手机的 EasyTier 虚拟 IPv4', hintText: '10.77.23.2'),
               ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('仅使用 TCP'),
-                subtitle: const Text('关闭 UDP 打洞，数据经所填 TCP 节点；节点须在线且允许转发。'),
-                value: _tcpOnly,
-                onChanged: _busy ? null : (value) => setState(() => _tcpOnly = value),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey('strategy-$_tcpOnly-$_allowP2P'),
+                initialValue: !_allowP2P ? 'relay' : _tcpOnly ? 'tcp' : 'auto',
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '连接策略'),
+                items: const [
+                  DropdownMenuItem(value: 'tcp', child: Text('TCP 直连优先（推荐）')),
+                  DropdownMenuItem(value: 'auto', child: Text('自动（允许 UDP）')),
+                  DropdownMenuItem(value: 'relay', child: Text('仅 TCP 中继')),
+                ],
+                onChanged: _busy ? null : (value) {
+                  if (value != null) {
+                    setState(() {
+                      _allowP2P = value != 'relay';
+                      _tcpOnly = value != 'auto';
+                    });
+                  }
+                },
               ),
+              const SizedBox(height: 8),
+              Text(!_allowP2P
+                  ? '只使用所填节点中继；节点必须允许转发。'
+                  : _tcpOnly
+                      ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。保留地址探测，不传输 UDP 数据。'
+                      : '先通过节点接通，后台尝试 TCP/UDP 直连；速度取决于实际网络。'),
               TextButton(onPressed: _busy ? null : () => unawaited(_run(_save)), child: const Text('保存并连接')),
             ],
             if (mode != EmbeddedNetworkMode.none)
