@@ -1,13 +1,26 @@
 name: EasyTier iOS core
 on:
   workflow_dispatch:
+    inputs:
+      build-core:
+        description: 'Also build the complete EasyTier XCFramework'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: easytier-core-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  selector:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: bash custom/ios-easytier/test-selector.sh
   core:
+    if: inputs.build-core
     runs-on: macos-15
     timeout-minutes: 45
     steps:
