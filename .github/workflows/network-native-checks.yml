@@ -15,3 +15,7 @@ jobs:
           persist-credentials: false
       - name: Test configuration, concurrent lifecycle and native session ownership
         run: bash custom/ios-easytier/test-selector.sh
+      - name: Reproduce WebSocket creation after native session invalidation
+        run: |
+          clang -fobjc-arc -framework Foundation custom/ios-easytier/tests/invalidated-websocket.m -o /tmp/immich-websocket-probe
+          /tmp/immich-websocket-probe
