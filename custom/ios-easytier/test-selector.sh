@@ -12,6 +12,8 @@ let package = Package(name: "EmbeddedNetworkCore", platforms: [.macOS(.v13)],
 SWIFT
 cp "$ROOT/mobile/ios/Tailnet/Sources/EmbeddedNetworkController.swift" "$WORK/Sources/EmbeddedNetworkCore/"
 cp "$ROOT/custom/ios-easytier/tests/ProviderStubs.swift" "$WORK/Sources/EmbeddedNetworkCore/"
+cp "$ROOT/mobile/ios/Tailnet/Sources/EasyTierNodeList.swift" "$WORK/Sources/EmbeddedNetworkCore/"
+cp "$ROOT/custom/ios-easytier/tests/NodeListTests.swift" "$WORK/Tests/EmbeddedNetworkCoreTests/"
 cp "$ROOT/custom/ios-easytier/tests/SelectorTests.swift" "$WORK/Tests/EmbeddedNetworkCoreTests/"
 cd "$WORK"
 swift test

@@ -13,10 +13,13 @@ actor EasyTierProvider: EmbeddedTransport {
     await Task.detached(priority: .utility, operation: operation).value
   }
   func prepare() async throws {
+    try await prepare(refreshNodes: false)
+  }
+  private func prepare(refreshNodes: Bool) async throws {
     guard TailnetPlugin.mode == .easytier else { return }
     if installed { return }
     if port == nil {
-      let options = try EasyTierConfiguration.options()
+      let options = try await EasyTierConfiguration.options(forceNodes: refreshNodes)
       let started = await core { options.withCString { immich_et_start($0) } }
       guard started > 0, let candidate = UInt16(exactly: started) else { throw TailnetFailure.invalidState }
       port = candidate
@@ -45,6 +48,11 @@ actor EasyTierProvider: EmbeddedTransport {
       throw TailnetFailure.startupTimedOut
     } catch {
       try? await stop(forgetIdentity: false)
+      let automatic = (try? EasyTierConfiguration.load())?["autoNodes"] as? Bool ?? true
+      if !refreshNodes && automatic {
+        try await prepare(refreshNodes: true)
+        return
+      }
       throw error
     }
   }

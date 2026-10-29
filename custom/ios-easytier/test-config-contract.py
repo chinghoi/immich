@@ -20,12 +20,13 @@ fn swift_saved_configuration_survives_strategy_changes_and_restart() {
                 "networkName":"test", "networkSecret":"local-test-only",
                 "peer":"tcp://127.0.0.1:11010", "ipv4":"10.77.23.2",
                 "instanceId":"b60ee0cf-e733-4cdd-9937-26934bb81065",
-                "tcpOnly":tcp, "allowP2P":p2p
+                "tcpOnly":tcp, "allowP2P":p2p, "peers":["tcp://101.251.179.30:11010"]
             });
             let saved = serde_json::to_string(&input).unwrap();
             let actual: Options = serde_json::from_str(&saved).expect("Swift saved JSON must load after restart");
             assert_eq!(actual.tcp_only, tcp);
             assert_eq!(actual.allow_p2p, p2p);
+            assert_eq!(actual.peers.len(), 1);
         }
     }
 }

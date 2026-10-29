@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
 import 'package:immich_mobile/infrastructure/repositories/network.repository.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:immich_ui/immich_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class EmbeddedNetworkSettings extends StatefulWidget {
   const EmbeddedNetworkSettings({super.key});
@@ -22,6 +22,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
   Timer? _timer;
   bool _tcpOnly = true;
   bool _allowP2P = true;
+  bool _autoNodes = true;
   bool _hasSecret = false;
   bool _busy = false;
   bool _refreshing = false;
@@ -58,6 +59,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
         _hasSecret = fields['hasSecret'] == true;
         _tcpOnly = fields['tcpOnly'] != false;
         _allowP2P = fields['allowP2P'] != false;
+        _autoNodes = fields['autoNodes'] != false;
       });
     } catch (_) {
       if (mounted) {
@@ -117,6 +119,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       'ipv4': _ip.text.trim(),
       'tcpOnly': _tcpOnly,
       'allowP2P': _allowP2P,
+      'autoNodes': _autoNodes,
     });
     _secret.clear();
     if (mounted) {
@@ -155,7 +158,9 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform != TargetPlatform.iOS) return const SizedBox.shrink();
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     final mode = EmbeddedNetworkMode.values.firstWhere(
       (mode) => mode.name == _status['mode'],
@@ -216,7 +221,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               tilePadding: const EdgeInsets.symmetric(horizontal: 20),
               leading: const Icon(Icons.settings_ethernet_rounded),
               title: const Text('连接配置'),
-              subtitle: Text(_peer.text.isEmpty ? '设置网络名称、密钥和连接节点' : _peer.text),
+              subtitle: Text(_autoNodes ? '自动更新节点' : _peer.text.isEmpty ? '设置网络名称、密钥和连接节点' : _peer.text),
               childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               children: [
             SettingListTile(
@@ -252,6 +257,14 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                     style: theme.textTheme.bodySmall),
                 ),
                 const SizedBox(height: 16),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('自动更新节点'),
+                  subtitle: const Text('自动获取可用节点，失败时使用已保存节点'),
+                  value: _autoNodes,
+                  onChanged: _busy ? null : (value) => setState(() => _autoNodes = value),
+                ),
+                if (!_autoNodes)
                 ImmichTextInput(
                   controller: _peer, enabled: !_busy, autocorrect: false,
                   label: '连接节点', hintText: 'tcp://服务器地址:11010',
@@ -261,7 +274,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 ImmichTextInput(
                   controller: _ip, enabled: !_busy, autocorrect: false,
                   label: '手机虚拟 IPv4', hintText: '10.77.23.2',
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   keyboardAction: TextInputAction.done,
                 ),
               ],
@@ -311,7 +324,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                   const SizedBox(height: 8),
                   const Text('手机和 Mac 使用相同网络名称与密钥、不同虚拟 IP。Immich 服务器地址填写 Mac 的虚拟 IP。'),
                   const SizedBox(height: 8),
-                  Text(!_allowP2P ? '仅连接所填节点，不尝试打洞。'
+                  Text(!_allowP2P ? '通过可用节点中继，不尝试打洞。'
                       : _tcpOnly ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。'
                       : '自动尝试 TCP/UDP 直连；失败继续中继。'),
                 ],

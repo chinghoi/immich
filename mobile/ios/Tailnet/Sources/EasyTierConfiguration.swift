@@ -36,19 +36,17 @@ enum EasyTierConfiguration {
     let tcp = input["tcpOnly"] as? Bool ?? true
     let previous = try load()
     let allowP2P = input["allowP2P"] as? Bool ?? previous?["allowP2P"] as? Bool ?? true
+    let automatic = input["autoNodes"] as? Bool ?? true
     let entered = input["networkSecret"] as? String ?? ""
     let secret = entered.isEmpty ? previous?["networkSecret"] as? String ?? "" : entered
     var address = in_addr()
     guard !name.isEmpty, name.utf8.count <= 128, !secret.isEmpty, secret.utf8.count <= 1024,
           inet_pton(AF_INET, ip, &address) == 1,
-          let url = URLComponents(string: peer), let scheme = url.scheme,
-          (scheme == "tcp" || (!tcp && scheme == "udp")), url.host != nil,
-          let port = url.port, port > 0, port <= 65535, url.user == nil, url.password == nil,
-          url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/" else {
+          automatic || validPeer(peer, tcpOnly: tcp) else {
       throw TailnetFailure.invalidState
     }
     let fields: [String: Any] = ["networkName": name, "networkSecret": secret,
-      "peer": peer, "ipv4": ip, "tcpOnly": tcp, "allowP2P": allowP2P]
+      "peer": peer, "ipv4": ip, "tcpOnly": tcp, "allowP2P": allowP2P, "autoNodes": automatic]
     let data = try JSONSerialization.data(withJSONObject: fields)
     let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
     if updated == errSecItemNotFound {
@@ -63,12 +61,32 @@ enum EasyTierConfiguration {
     guard status == errSecSuccess || status == errSecItemNotFound else { throw TailnetFailure.invalidState }
     UserDefaults.standard.removeObject(forKey: "immich.easytier.instanceID")
   }
-  static func options() throws -> String {
-    guard var fields = try load() else { throw TailnetFailure.invalidState }
+  static func validPeer(_ peer: String, tcpOnly: Bool) -> Bool {
+    guard let url = URLComponents(string: peer), let scheme = url.scheme,
+          (scheme == "tcp" || (!tcpOnly && scheme == "udp")), url.host != nil,
+          let port = url.port, port > 0, port <= 65535, url.user == nil, url.password == nil,
+          url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/" else { return false }
+    return true
+  }
+  static func options(forceNodes: Bool = false) async throws -> String {
+    guard let stored = try load() else { throw TailnetFailure.invalidState }
     let key = "immich.easytier.instanceID"
     let id = UserDefaults.standard.string(forKey: key) ?? UUID().uuidString.lowercased()
     UserDefaults.standard.set(id, forKey: key)
-    fields["instanceId"] = id
+    let tcp = stored["tcpOnly"] as? Bool ?? true
+    let manual = stored["peer"] as? String ?? ""
+    let automatic = stored["autoNodes"] as? Bool ?? true
+    let peers = automatic ? await EasyTierNodes.shared.endpoints(force: forceNodes) : []
+    let fallback = validPeer(manual, tcpOnly: tcp) ? manual : ""
+    guard !peers.isEmpty || !fallback.isEmpty else { throw TailnetFailure.invalidState }
+    // App-only preferences must never cross the strict Rust JSON boundary.
+    let fields: [String: Any] = [
+      "networkName": stored["networkName"] as? String ?? "",
+      "networkSecret": stored["networkSecret"] as? String ?? "",
+      "ipv4": stored["ipv4"] as? String ?? "",
+      "tcpOnly": tcp, "allowP2P": stored["allowP2P"] as? Bool ?? true,
+      "peer": fallback, "peers": peers, "instanceId": id
+    ]
     return String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
   }
 }

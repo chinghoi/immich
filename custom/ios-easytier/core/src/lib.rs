@@ -33,6 +33,8 @@ struct Options {
     network_name: String,
     network_secret: String,
     peer: String,
+    #[serde(default)]
+    peers: Vec<String>,
     ipv4: String,
     instance_id: String,
     #[serde(default = "default_tcp")]
@@ -48,23 +50,24 @@ fn quoted(value: &str) -> String {
 }
 
 fn config(options: &Options, port: u16) -> Result<TomlConfigLoader, ()> {
-    let peer = url::Url::parse(&options.peer).map_err(|_| ())?;
-    if !matches!(peer.scheme(), "tcp" | "udp")
-        || peer.host_str().is_none()
-        || peer.port().is_none()
-        || !peer.username().is_empty()
-        || peer.password().is_some()
-        || peer.query().is_some()
-        || peer.fragment().is_some()
-        || !matches!(peer.path(), "" | "/")
-        || (options.tcp_only && peer.scheme() != "tcp")
-        || options.network_name.is_empty()
-        || options.network_secret.is_empty()
-        || options.network_name.len() > 128
-        || options.network_secret.len() > 1024
-    {
+    if options.network_name.is_empty() || options.network_secret.is_empty()
+        || options.network_name.len() > 128 || options.network_secret.len() > 1024
+        || options.peers.len() > 8 {
         return Err(());
     }
+    let mut peers = Vec::new();
+    for value in options.peers.iter().chain(std::iter::once(&options.peer)).filter(|v| !v.is_empty()) {
+        let peer = url::Url::parse(value).map_err(|_| ())?;
+        if !matches!(peer.scheme(), "tcp" | "udp") || peer.host_str().is_none()
+            || peer.port().is_none() || !peer.username().is_empty() || peer.password().is_some()
+            || peer.query().is_some() || peer.fragment().is_some()
+            || !matches!(peer.path(), "" | "/") || (options.tcp_only && peer.scheme() != "tcp") {
+            return Err(());
+        }
+        let entry = format!("[[peer]]\nuri = {}\n", quoted(peer.as_str()));
+        if !peers.contains(&entry) { peers.push(entry); }
+    }
+    if peers.is_empty() { return Err(()); }
     let ip: Ipv4Addr = options.ipv4.parse().map_err(|_| ())?;
     if ip.is_unspecified() || ip.is_loopback() || ip.is_multicast() || ip.is_broadcast() {
         return Err(());
@@ -72,13 +75,13 @@ fn config(options: &Options, port: u16) -> Result<TomlConfigLoader, ()> {
     // JSON string quoting is valid for these TOML basic strings. No raw config
     // from Flutter can enable TUN, wildcard listeners, RPC, or plaintext tunnels.
     let text = format!(
-        "instance_name = 'immich-ios'\ninstance_id = {}\nhostname = 'immich-ios'\nipv4 = {}\nlisteners = []\nsocks5_proxy = {}\n[network_identity]\nnetwork_name = {}\nnetwork_secret = {}\n[[peer]]\nuri = {}\n[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndefault_protocol = 'tcp'\nenable_encryption = true\ndisable_p2p = {}\ndisable_udp_hole_punching = {}\ndisable_tcp_hole_punching = {}\ndisable_upnp = true\naccept_dns = false\n",
+        "instance_name = 'immich-ios'\ninstance_id = {}\nhostname = 'immich-ios'\nipv4 = {}\nlisteners = []\nsocks5_proxy = {}\n[network_identity]\nnetwork_name = {}\nnetwork_secret = {}\n{}[flags]\nno_tun = true\nuse_smoltcp = true\nbind_device = false\ndefault_protocol = 'tcp'\nenable_encryption = true\ndisable_p2p = {}\ndisable_udp_hole_punching = {}\ndisable_tcp_hole_punching = {}\ndisable_upnp = true\naccept_dns = false\n",
         quoted(&options.instance_id),
         quoted(&format!("{ip}/24")),
         quoted(&format!("socks5://127.0.0.1:{port}")),
         quoted(&options.network_name),
         quoted(&options.network_secret),
-        quoted(peer.as_str()),
+        peers.join(""),
         !options.allow_p2p,
         options.tcp_only || !options.allow_p2p,
         !options.allow_p2p,
@@ -206,6 +209,7 @@ mod tests {
             network_name: "test".into(),
             network_secret: "local-test-only".into(),
             peer: "tcp://127.0.0.1:11010".into(),
+            peers: Vec::new(),
             ipv4: "10.77.23.2".into(),
             instance_id: "b60ee0cf-e733-4cdd-9937-26934bb81065".into(),
             tcp_only: true,
@@ -324,6 +328,7 @@ mod tests {
         for (path_port, expected_route) in [(peer_port, "Direct"), (relay_port, "Relay")] {
             let mut opts = options();
             opts.peer = format!("tcp://127.0.0.1:{path_port}");
+            opts.peers = vec!["tcp://127.0.0.1:1".into(), opts.peer.clone()];
             let port = start(opts).unwrap();
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
