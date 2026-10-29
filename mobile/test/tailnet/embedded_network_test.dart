@@ -97,9 +97,9 @@ void main() {
     await tester.ensureVisible(find.text('连接配置'));
     await tester.tap(find.text('连接配置'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('保存并连接'));
+    await tester.ensureVisible(find.byKey(const ValueKey('embedded-network-connect')));
     await tester.pumpAndSettle();
-    expect(find.text('保存并连接'), findsOneWidget);
+    expect(find.byKey(const ValueKey('embedded-network-connect')), findsOneWidget);
     expect(find.text('已安全保存；留空沿用原密钥'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -113,15 +113,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('连接配置'));
+    await tester.tap(find.text('连接配置'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('TCP 直连优先（推荐）'));
     await tester.tap(find.text('TCP 直连优先（推荐）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('仅 TCP 中继').last);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('保存并连接'));
+    await tester.ensureVisible(find.byKey(const ValueKey('embedded-network-connect')));
     // Stop at the native configuration boundary; the widget test has no native networking SDK.
     rejectSave = true;
-    await tester.tap(find.text('保存并连接'));
+    await tester.tap(find.byKey(const ValueKey('embedded-network-connect')));
     await tester.pumpAndSettle();
     final saved = calls.lastWhere((call) => call.method == 'saveConfiguration').arguments as Map;
     expect(saved['tcpOnly'], isTrue);
@@ -149,7 +152,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(Card), findsNothing);
       expect(find.text('连接方式'), findsOneWidget);
-      expect(find.text('连接策略'), findsOneWidget);
+      expect(find.text('连接策略'), findsNothing);
+      expect(find.text('连接配置'), findsOneWidget);
       expect(find.byType(FilledButton), findsOneWidget);
       expect(tester.takeException(), isNull);
       if (const bool.fromEnvironment('NETWORK_UI_PREVIEWS')) {

@@ -210,12 +210,21 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 20),
           ),
           if (mode == EmbeddedNetworkMode.easytier) ...[
+            ExpansionTile(
+              key: ValueKey('configuration-$_hasSecret'),
+              initiallyExpanded: !_hasSecret,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: const Icon(Icons.settings_ethernet_rounded),
+              title: const Text('连接配置'),
+              subtitle: Text(_peer.text.isEmpty ? '设置网络名称、密钥和连接节点' : _peer.text),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              children: [
             SettingListTile(
               title: '连接策略',
               subtitle: strategies[strategy],
               leading: const Icon(Icons.alt_route_rounded),
               trailing: const Icon(Icons.chevron_right_rounded),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              contentPadding: EdgeInsets.zero,
               onTap: _busy ? null : () async {
                 final selected = await _choose('连接策略', strategy, strategies);
                 if (selected != null && mounted) {
@@ -226,15 +235,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 }
               },
             ),
-            ExpansionTile(
-              key: ValueKey('configuration-$_hasSecret'),
-              initiallyExpanded: !_hasSecret,
-              tilePadding: const EdgeInsets.symmetric(horizontal: 20),
-              leading: const Icon(Icons.settings_ethernet_rounded),
-              title: const Text('连接配置'),
-              subtitle: Text(_peer.text.isEmpty ? '设置网络名称、密钥和连接节点' : _peer.text),
-              childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              children: [
+                const SizedBox(height: 12),
                 ImmichTextInput(
                   controller: _name, enabled: !_busy, autocorrect: false,
                   label: '网络名称', keyboardAction: TextInputAction.next,
@@ -270,11 +271,12 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
+                  key: const ValueKey('embedded-network-connect'),
                   onPressed: _busy ? null : () {
                     FocusScope.of(context).unfocus();
                     unawaited(_run(_save));
                   },
-                  child: const Text('保存并连接'),
+                  child: Text(_hasSecret ? '连接' : '保存并连接'),
                 ),
               ),
             ),
@@ -291,6 +293,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               ]),
             ),
           if (mode != EmbeddedNetworkMode.none) ...[
+            if (mode == EmbeddedNetworkMode.tailscale)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: TextButton.icon(
@@ -300,7 +303,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
             ),
             ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 20),
-              title: const Text('使用说明与更多操作'),
+              title: const Text('更多'),
               childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               children: [
                 const Text('内嵌网络需要 App 保持前台。后台备份和桌面组件使用普通网络。切换通道不会修改服务器地址。'),
