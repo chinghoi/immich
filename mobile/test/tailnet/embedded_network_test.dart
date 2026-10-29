@@ -13,10 +13,12 @@ void main() {
   final calls = <MethodCall>[];
   var mode = 'none';
   var rejectSave = false;
+  var targetRoute = 'Unlinked';
   setUp(() {
     calls.clear();
     mode = 'none';
     rejectSave = false;
+    targetRoute = 'Unlinked';
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       EmbeddedNetworkSession.channel,
@@ -32,7 +34,7 @@ void main() {
           return mode != 'none';
         }
         if (call.method == 'status') {
-          return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
+          return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running', 'targetRoute': targetRoute};
         }
         if (call.method == 'configuration') {
           return {'tcpOnly': true, 'hasSecret': true, 'subscriptionURL': 'https://nodes.example.invalid/nodes.json'};
@@ -172,6 +174,24 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }
     debugDefaultTargetPlatformOverride = null;
+  });
+  testWidgets('network status describes the route to the server', (tester) async {
+    mode = 'easytier';
+    for (final (route, label) in [
+      ('LocalDirect', '局域网直连'),
+      ('RemoteDirect', '直连'),
+      ('Relay', '中继'),
+      ('Unlinked', '等待连接服务器'),
+    ]) {
+      targetRoute = route;
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SingleChildScrollView(child: EmbeddedNetworkSettings()))),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(label), findsOneWidget);
+      expect(find.text('保存并连接'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
