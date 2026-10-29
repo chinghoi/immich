@@ -1,0 +1,15 @@
+name: EasyTier configuration contract
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify real Rust deserialization against Swift saved configuration
+        run: python3 custom/ios-easytier/test-config-contract.py
