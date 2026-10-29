@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -91,6 +94,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('连接配置'));
+    await tester.tap(find.text('连接配置'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('保存并连接'));
     await tester.pumpAndSettle();
     expect(find.text('保存并连接'), findsOneWidget);
@@ -121,6 +127,44 @@ void main() {
     expect(saved['tcpOnly'], isTrue);
     expect(saved['allowP2P'], isFalse);
     await tester.pumpWidget(const SizedBox.shrink());
+    debugDefaultTargetPlatformOverride = null;
+  });
+  testWidgets('settings use compact list rows in light and dark themes', (tester) async {
+    mode = 'easytier';
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    for (final brightness in Brightness.values) {
+      final previewKey = GlobalKey();
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff4756b5), brightness: brightness),
+          useMaterial3: true,
+        ),
+        home: Scaffold(body: SingleChildScrollView(
+          child: RepaintBoundary(key: previewKey, child: const EmbeddedNetworkSettings()),
+        )),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(Card), findsNothing);
+      expect(find.text('连接方式'), findsOneWidget);
+      expect(find.text('连接策略'), findsOneWidget);
+      expect(find.byType(FilledButton), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      if (const bool.fromEnvironment('NETWORK_UI_PREVIEWS')) {
+        await tester.runAsync(() async {
+          final boundary = previewKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 2);
+          final data = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+          final output = File('build/network-previews/${brightness.name}.png');
+          await output.parent.create(recursive: true);
+          await output.writeAsBytes(data.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
     debugDefaultTargetPlatformOverride = null;
   });
   testWidgets('provider settings are absent on Android', (tester) async {

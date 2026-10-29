@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
 import 'package:immich_mobile/infrastructure/repositories/network.repository.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:immich_ui/immich_ui.dart';
 
 class EmbeddedNetworkSettings extends StatefulWidget {
   const EmbeddedNetworkSettings({super.key});
@@ -98,7 +99,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       await NetworkRepository.init();
     } catch (_) {
       if (mounted) {
-        setState(() => _error = '操作未完成。EasyTier 请检查配置、密钥和节点是否在线；Tailscale 请检查授权。');
+        setState(() => _error = '请检查当前通道的节点配置或授权后重试。');
       }
     } finally {
       await _refresh();
@@ -123,177 +124,216 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
     }
   }
 
+
+  Future<T?> _choose<T>(String title, T selected, Map<T, String> choices) {
+    FocusScope.of(context).unfocus();
+    return showModalBottomSheet<T>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SettingGroupTitle(title: title),
+              for (final entry in choices.entries)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                  title: Text(entry.value),
+                  trailing: entry.key == selected
+                      ? Icon(Icons.check_rounded, color: Theme.of(context).colorScheme.primary)
+                      : null,
+                  onTap: () => Navigator.pop(sheetContext, entry.key),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform != TargetPlatform.iOS) {
-      return const SizedBox.shrink();
-    }
+    if (defaultTargetPlatform != TargetPlatform.iOS) return const SizedBox.shrink();
+    final theme = Theme.of(context);
     final mode = EmbeddedNetworkMode.values.firstWhere(
       (mode) => mode.name == _status['mode'],
       orElse: () => EmbeddedNetworkMode.none,
     );
-    final nodeState = switch (_status['state']) {
-      'Running' => '核心已启动',
+    const modes = {
+      EmbeddedNetworkMode.none: '普通连接',
+      EmbeddedNetworkMode.tailscale: 'Tailscale',
+      EmbeddedNetworkMode.easytier: 'EasyTier',
+    };
+    const strategies = {
+      'tcp': 'TCP 直连优先（推荐）',
+      'auto': '自动（允许 UDP）',
+      'relay': '仅 TCP 中继',
+    };
+    final strategy = !_allowP2P ? 'relay' : _tcpOnly ? 'tcp' : 'auto';
+    final state = switch (_status['state']) {
+      'Running' => _status['connected'] == false ? '等待节点连接' : '已启动',
       'NeedsLogin' => '等待授权',
       'NeedsMachineAuth' => '等待管理员批准',
-      'NeedsConfiguration' => '请填写配置',
-      'Disabled' => '普通连接',
+      'NeedsConfiguration' => '尚未配置',
+      'Disabled' => '使用系统网络',
       'Unavailable' => '连接不可用',
-      _ => '连接中',
+      _ => '正在连接',
     };
     final authURL = Uri.tryParse(_status['authURL'] as String? ?? '');
-    final canAuthorize =
-        authURL != null &&
-        authURL.scheme == 'https' &&
+    final canAuthorize = authURL != null && authURL.scheme == 'https' &&
         (authURL.host == 'login.tailscale.com' || authURL.host.endsWith('.tailscale.com'));
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DropdownButtonFormField<EmbeddedNetworkMode>(
-              initialValue: mode,
-              isExpanded: true,
-              key: ValueKey(mode),
-              decoration: const InputDecoration(labelText: 'App 网络通道'),
-              items: const [
-                DropdownMenuItem(value: EmbeddedNetworkMode.none, child: Text('普通连接')),
-                DropdownMenuItem(value: EmbeddedNetworkMode.tailscale, child: Text('Tailscale')),
-                DropdownMenuItem(value: EmbeddedNetworkMode.easytier, child: Text('EasyTier')),
-              ],
-              onChanged: _busy
-                  ? null
-                  : (mode) {
-                      if (mode != null) {
-                        unawaited(_run(() => EmbeddedNetworkSession.select(mode)));
-                      }
-                    },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SettingGroupTitle(title: 'App 网络', icon: Icons.hub_outlined),
+          SettingListTile(
+            title: '连接方式',
+            subtitle: modes[mode],
+            leading: const Icon(Icons.route_outlined),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            onTap: _busy ? null : () async {
+              final selected = await _choose('连接方式', mode, modes);
+              if (selected != null && selected != mode && mounted) {
+                await _run(() => EmbeddedNetworkSession.select(selected));
+              }
+            },
+          ),
+          SettingListTile(
+            title: '网络状态',
+            subtitle: state,
+            leading: const Icon(Icons.info_outline_rounded),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          ),
+          if (mode == EmbeddedNetworkMode.easytier) ...[
+            SettingListTile(
+              title: '连接策略',
+              subtitle: strategies[strategy],
+              leading: const Icon(Icons.alt_route_rounded),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              onTap: _busy ? null : () async {
+                final selected = await _choose('连接策略', strategy, strategies);
+                if (selected != null && mounted) {
+                  setState(() {
+                    _allowP2P = selected != 'relay';
+                    _tcpOnly = selected != 'auto';
+                  });
+                }
+              },
             ),
-            const SizedBox(height: 12),
-            Text('状态：$nodeState'),
-            const SizedBox(height: 8),
-            const Text('三种模式互斥，不占用系统 VPN。切换不会自动修改 Immich 服务器地址；请使用所选网络能访问的服务器地址。'),
-            if (mode != EmbeddedNetworkMode.none) ...[
-              const SizedBox(height: 8),
-              const Text('内嵌组网需要保持 App 在前台。离开 App 可能暂停；后台自动备份和桌面小组件不使用此通道。'),
-            ],
-            if (mode == EmbeddedNetworkMode.tailscale)
-              Wrap(
-                spacing: 8,
-                children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => unawaited(_run(() => EmbeddedNetworkSession.action('login'))),
-                    child: const Text('请求授权'),
-                  ),
-                  if (canAuthorize)
-                    TextButton(
-                      onPressed: () => unawaited(launchUrl(authURL, mode: LaunchMode.externalApplication)),
-                      child: const Text('打开授权网页'),
-                    ),
-                ],
-              ),
-            if (mode == EmbeddedNetworkMode.easytier) ...[
-              const SizedBox(height: 12),
-              const Text('Mac 和手机须使用相同网络名称和密钥、不同虚拟 IP。服务器 URL 填 Mac 的 EasyTier 虚拟 IP。'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _name,
-                enabled: !_busy,
-                autocorrect: false,
-                decoration: const InputDecoration(labelText: 'EasyTier 网络名称'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _secret,
-                enabled: !_busy,
-                obscureText: true,
-                enableSuggestions: false,
-                autocorrect: false,
-                decoration: InputDecoration(
-                  labelText: '网络密钥',
-                  helperMaxLines: 2,
-                  helperText: _hasSecret ? '已安全保存；留空沿用原密钥' : '仅保存在这台手机的钥匙串',
+            ExpansionTile(
+              key: ValueKey('configuration-$_hasSecret'),
+              initiallyExpanded: !_hasSecret,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: const Icon(Icons.settings_ethernet_rounded),
+              title: const Text('连接配置'),
+              subtitle: Text(_peer.text.isEmpty ? '设置网络名称、密钥和连接节点' : _peer.text),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              children: [
+                ImmichTextInput(
+                  controller: _name, enabled: !_busy, autocorrect: false,
+                  label: '网络名称', keyboardAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 16),
+                ImmichTextInput(
+                  controller: _secret, enabled: !_busy, obscureText: true, autocorrect: false,
+                  label: '网络密钥', keyboardAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(_hasSecret ? '已安全保存；留空沿用原密钥' : '仅保存在这台手机的钥匙串',
+                    style: theme.textTheme.bodySmall),
+                ),
+                const SizedBox(height: 16),
+                ImmichTextInput(
+                  controller: _peer, enabled: !_busy, autocorrect: false,
+                  label: '连接节点', hintText: 'tcp://服务器地址:11010',
+                  keyboardType: TextInputType.url, keyboardAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 16),
+                ImmichTextInput(
+                  controller: _ip, enabled: !_busy, autocorrect: false,
+                  label: '手机虚拟 IPv4', hintText: '10.77.23.2',
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardAction: TextInputAction.done,
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _busy ? null : () {
+                    FocusScope.of(context).unfocus();
+                    unawaited(_run(_save));
+                  },
+                  child: const Text('保存并连接'),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _peer,
-                enabled: !_busy,
-                autocorrect: false,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(labelText: '连接节点', hintText: 'tcp://服务器地址:11010'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _ip,
-                enabled: !_busy,
-                autocorrect: false,
-                decoration: const InputDecoration(labelText: '手机的 EasyTier 虚拟 IPv4', hintText: '10.77.23.2'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: ValueKey('strategy-$_tcpOnly-$_allowP2P'),
-                initialValue: !_allowP2P
-                    ? 'relay'
-                    : _tcpOnly
-                    ? 'tcp'
-                    : 'auto',
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '连接策略'),
-                items: const [
-                  DropdownMenuItem(value: 'tcp', child: Text('TCP 直连优先（推荐）')),
-                  DropdownMenuItem(value: 'auto', child: Text('自动（允许 UDP）')),
-                  DropdownMenuItem(value: 'relay', child: Text('仅 TCP 中继')),
-                ],
-                onChanged: _busy
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          setState(() {
-                            _allowP2P = value != 'relay';
-                            _tcpOnly = value != 'auto';
-                          });
-                        }
-                      },
-              ),
-              const SizedBox(height: 8),
-              Text(
-                !_allowP2P
-                    ? '只使用所填节点中继；节点必须允许转发。'
-                    : _tcpOnly
-                    ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。保留地址探测，不传输 UDP 数据。'
-                    : '先通过节点接通，后台尝试 TCP/UDP 直连；速度取决于实际网络。',
-              ),
-              TextButton(onPressed: _busy ? null : () => unawaited(_run(_save)), child: const Text('保存并连接')),
-            ],
-            if (mode != EmbeddedNetworkMode.none)
-              Wrap(
-                spacing: 8,
-                children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => unawaited(_run(() => EmbeddedNetworkSession.action('reconnect'))),
-                    child: const Text('重连'),
-                  ),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => unawaited(
-                            _run(() async {
-                              await EmbeddedNetworkSession.action('logout');
-                              _secret.clear();
-                              await _load();
-                            }),
-                          ),
-                    child: const Text('退出并清除当前通道身份'),
-                  ),
-                ],
-              ),
-            if (_busy) const LinearProgressIndicator(),
-            if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ),
           ],
-        ),
+          if (mode == EmbeddedNetworkMode.tailscale)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Wrap(spacing: 8, children: [
+                TextButton(onPressed: _busy ? null : () => unawaited(_run(() => EmbeddedNetworkSession.action('login'))),
+                  child: const Text('请求授权')),
+                if (canAuthorize)
+                  TextButton(onPressed: () => unawaited(launchUrl(authURL, mode: LaunchMode.externalApplication)),
+                    child: const Text('打开授权网页')),
+              ]),
+            ),
+          if (mode != EmbeddedNetworkMode.none) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: TextButton.icon(
+                onPressed: _busy ? null : () => unawaited(_run(() => EmbeddedNetworkSession.action('reconnect'))),
+                icon: const Icon(Icons.refresh_rounded), label: const Text('重连'),
+              ),
+            ),
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+              title: const Text('使用说明与更多操作'),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              children: [
+                const Text('内嵌网络需要 App 保持前台。后台备份和桌面组件使用普通网络。切换通道不会修改服务器地址。'),
+                if (mode == EmbeddedNetworkMode.easytier) ...[
+                  const SizedBox(height: 8),
+                  const Text('手机和 Mac 使用相同网络名称与密钥、不同虚拟 IP。Immich 服务器地址填写 Mac 的虚拟 IP。'),
+                  const SizedBox(height: 8),
+                  Text(!_allowP2P ? '仅连接所填节点，不尝试打洞。'
+                      : _tcpOnly ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。'
+                      : '自动尝试 TCP/UDP 直连；失败继续中继。'),
+                ],
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _busy ? null : () => unawaited(_run(() async {
+                    await EmbeddedNetworkSession.action('logout');
+                    _secret.clear();
+                    await _load();
+                  })),
+                  child: Text('退出并清除当前通道身份', style: TextStyle(color: theme.colorScheme.error)),
+                ),
+              ],
+            ),
+          ],
+          if (_busy)
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: LinearProgressIndicator()),
+          if (_error != null)
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              leading: Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
+              title: Text('操作未完成', style: TextStyle(color: theme.colorScheme.error)),
+              subtitle: Text(_error!),
+            ),
+        ],
       ),
     );
   }

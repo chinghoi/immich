@@ -107,7 +107,14 @@ jobs:
           dart format lib/embedded_network lib/tailnet test/tailnet lib/widgets/common/immich_sliver_app_bar.dart
           set -o pipefail
           dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart 2>&1 | tee "$RUNNER_TEMP/tailnet-analysis.log"
-          flutter test test/tailnet
+          flutter test test/tailnet --dart-define=NETWORK_UI_PREVIEWS=true
+      - name: Upload network settings previews
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-ui-previews
+          path: mobile/build/network-previews/*.png
+          retention-days: 7
       - name: Upload transport analysis log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
