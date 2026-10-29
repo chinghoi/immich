@@ -1,5 +1,8 @@
 name: EasyTier configuration contract
 on:
+  push:
+    branches: ['ios/easytier']
+    paths: ['custom/ios-easytier/**', 'mobile/ios/Tailnet/Sources/EasyTierConfiguration.swift', '.github/workflows/easytier-config.yml']
   workflow_dispatch:
 permissions:
   contents: read
