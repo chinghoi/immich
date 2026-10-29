@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Public addresses only. Credentials remain in the provider's Keychain entry.
 enum EasyTierNodeList {
@@ -33,29 +34,54 @@ enum EasyTierNodeList {
 
 actor EasyTierNodes {
   static let shared = EasyTierNodes()
-  private let cacheKey = "immich.easytier.verifiedNodes.v1"
-  private var refreshing = false
-  private var lastAttempt = Date.distantPast
-  private let sources = [
-    "https://nodes.example.invalid/nodes.json",
-    "https://backup.example.invalid/nodes.json"
-  ]
-  func endpoints(force: Bool = false) async -> [String] {
-    let cached = (UserDefaults.standard.stringArray(forKey: cacheKey) ?? []).filter(EasyTierNodeList.valid)
-    if !force && Date().timeIntervalSince(lastAttempt) < 600 { return cached }
+  private let defaults: UserDefaults
+  private let fetch: @Sendable (URL) async throws -> Data
+  private var refreshing = Set<String>()
+  private var lastAttempt = [String: Date]()
+  init(defaults: UserDefaults = .standard,
+       fetch: @escaping @Sendable (URL) async throws -> Data = EasyTierNodes.download) {
+    self.defaults = defaults
+    self.fetch = fetch
+    // Retire the old cache that had an implicit, compiled-in owner.
+    defaults.removeObject(forKey: "immich.easytier.verifiedNodes.v1")
+  }
+  static func validSubscription(_ value: String) -> Bool {
+    guard value.utf8.count <= 2048, let u = URLComponents(string: value),
+          u.scheme == "https", let host = u.host, !host.isEmpty,
+          u.user == nil, u.password == nil, u.fragment == nil else { return false }
+    return true
+  }
+  static func scope(_ sources: [String]) -> String {
+    let bytes = Data(sources.joined(separator: "\u{0}").utf8)
+    return "immich.easytier.nodes.v2." + SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+  }
+  func endpoints(sources: [String], force: Bool = false) async -> [String] {
+    let sources = sources.filter(Self.validSubscription)
+    guard !sources.isEmpty else { return [] }
+    let key = Self.scope(sources)
+    let cached = (defaults.stringArray(forKey: key) ?? []).filter(EasyTierNodeList.valid)
+    if !force && Date().timeIntervalSince(lastAttempt[key] ?? .distantPast) < 600 { return cached }
     if !force && !cached.isEmpty {
-      Task { await refresh() }
+      Task { await refresh(sources: sources, key: key) }
       return cached
     }
-    await refresh()
-    return (UserDefaults.standard.stringArray(forKey: cacheKey) ?? []).filter(EasyTierNodeList.valid)
+    await refresh(sources: sources, key: key)
+    return (defaults.stringArray(forKey: key) ?? []).filter(EasyTierNodeList.valid)
   }
-  private func refresh() async {
-    guard !refreshing else { return }
-    refreshing = true
-    lastAttempt = Date()
-    defer { refreshing = false }
-    // Control-plane fetch must never depend on the overlay it is bootstrapping.
+  private func refresh(sources: [String], key: String) async {
+    guard !refreshing.contains(key) else { return }
+    refreshing.insert(key)
+    lastAttempt[key] = Date()
+    defer { refreshing.remove(key) }
+    for source in sources {
+      guard let url = URL(string: source) else { continue }
+      do {
+        let nodes = EasyTierNodeList.decode(try await fetch(url))
+        if !nodes.isEmpty { defaults.set(nodes, forKey: key); return }
+      } catch { /* Only this subscription's cache and manual fallback may be reused. */ }
+    }
+  }
+  private static func download(_ url: URL) async throws -> Data {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.httpShouldSetCookies = false
     configuration.httpCookieStorage = nil
@@ -65,26 +91,16 @@ actor EasyTierNodes {
     configuration.timeoutIntervalForResource = 5
     let session = URLSession(configuration: configuration)
     defer { session.invalidateAndCancel() }
-    for source in sources {
-      guard let url = URL(string: source) else { continue }
-      do {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let response = response as? HTTPURLResponse, response.statusCode == 200,
-              response.url?.host == url.host, response.url?.path == url.path,
-              response.expectedContentLength <= 65536 else { continue }
-        var data = Data()
-        for try await byte in bytes {
-          guard data.count < 65536 else { throw URLError(.dataLengthExceedsMaximum) }
-          data.append(byte)
-        }
-        let nodes = EasyTierNodeList.decode(data)
-        if !nodes.isEmpty {
-          UserDefaults.standard.set(nodes, forKey: cacheKey)
-          return
-        }
-      } catch { /* Keep previously verified addresses and the user's manual fallback. */ }
+    var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    let (bytes, response) = try await session.bytes(for: request)
+    guard let response = response as? HTTPURLResponse, response.statusCode == 200,
+          response.url == url, response.expectedContentLength <= 65536 else { throw URLError(.badServerResponse) }
+    var data = Data()
+    for try await byte in bytes {
+      guard data.count < 65536 else { throw URLError(.dataLengthExceedsMaximum) }
+      data.append(byte)
     }
+    return data
   }
 }

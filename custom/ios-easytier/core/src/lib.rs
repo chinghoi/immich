@@ -136,24 +136,27 @@ fn status(target: &str) -> Result<String, ()> {
             .and_then(|v| v.address.as_ref())
             .is_some_and(|v| Ipv4Addr::from(v.addr).to_string() == target)
     });
-    let (path, protocol) = match route {
+    let (path, protocol, endpoint) = match route {
         Some(route) => {
             let hop = route.next_hop_peer_id;
-            let protocol = info
+            let tunnel = info
                 .peers
                 .iter()
                 .find(|p| p.peer_id == hop)
                 .and_then(|p| p.conns.iter().find(|c| !c.is_closed))
-                .and_then(|c| c.tunnel.as_ref())
-                .map(|t| t.tunnel_type.as_str())
-                .unwrap_or("");
-            (if route.cost <= 1 { "Direct" } else { "Relay" }, protocol)
+                .and_then(|c| c.tunnel.as_ref());
+            let protocol = tunnel.map(|t| t.tunnel_type.as_str()).unwrap_or("");
+            let endpoint = if route.cost <= 1 {
+                tunnel.and_then(|t| t.resolved_remote_addr.as_ref().or(t.remote_addr.as_ref()))
+                    .map(|u| u.url.as_str()).unwrap_or("")
+            } else { "" };
+            (if route.cost <= 1 { "Direct" } else { "Relay" }, protocol, endpoint)
         }
-        None => ("Unlinked", ""),
+        None => ("Unlinked", "", ""),
     };
     // Never export network secrets, peer lists, endpoint URLs, or raw errors.
     Ok(json!({"state": if info.error_msg.is_some() { "Unavailable" } else if info.running { "Running" } else { "Starting" },
-        "targetRoute":path,"protocol":protocol,"port":instance.port,
+        "targetRoute":path,"protocol":protocol,"directEndpoint":endpoint,"port":instance.port,
         "connected": info.peers.iter().any(|peer| peer.conns.iter().any(|conn| !conn.is_closed))}).to_string())
 }
 unsafe fn argument<'a>(value: *const c_char) -> Result<&'a str, ()> {

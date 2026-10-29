@@ -35,7 +35,7 @@ void main() {
           return {'mode': mode, 'enabled': mode != 'none', 'state': 'Running'};
         }
         if (call.method == 'configuration') {
-          return {'tcpOnly': true, 'hasSecret': true};
+          return {'tcpOnly': true, 'hasSecret': true, 'subscriptionURL': 'https://nodes.example.invalid/nodes.json'};
         }
         return null;
       },
@@ -66,7 +66,7 @@ void main() {
     await EmbeddedNetworkSession.requireSystemBackgroundTransport();
   });
   test('configuration read does not request the stored secret', () async {
-    expect(await EmbeddedNetworkSession.configuration(), {'tcpOnly': true, 'hasSecret': true});
+    expect(await EmbeddedNetworkSession.configuration(), {'tcpOnly': true, 'hasSecret': true, 'subscriptionURL': 'https://nodes.example.invalid/nodes.json'});
     expect(calls.single.method, 'configuration');
     expect(calls.single.arguments, isNull);
   });
@@ -129,6 +129,8 @@ void main() {
     final saved = calls.lastWhere((call) => call.method == 'saveConfiguration').arguments as Map;
     expect(saved['tcpOnly'], isTrue);
     expect(saved['allowP2P'], isFalse);
+    expect(saved['subscriptionURL'], 'https://nodes.example.invalid/nodes.json');
+    expect(saved['backupSubscriptionURL'], isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
   });

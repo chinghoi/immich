@@ -37,16 +37,20 @@ enum EasyTierConfiguration {
     let previous = try load()
     let allowP2P = input["allowP2P"] as? Bool ?? previous?["allowP2P"] as? Bool ?? true
     let automatic = input["autoNodes"] as? Bool ?? true
+    let subscription = (input["subscriptionURL"] as? String ?? previous?["subscriptionURL"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let backup = (input["backupSubscriptionURL"] as? String ?? previous?["backupSubscriptionURL"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard (subscription.isEmpty || EasyTierNodes.validSubscription(subscription)),
+          (backup.isEmpty || EasyTierNodes.validSubscription(backup)) else { throw TailnetFailure.invalidState }
     let entered = input["networkSecret"] as? String ?? ""
     let secret = entered.isEmpty ? previous?["networkSecret"] as? String ?? "" : entered
     var address = in_addr()
     guard !name.isEmpty, name.utf8.count <= 128, !secret.isEmpty, secret.utf8.count <= 1024,
           inet_pton(AF_INET, ip, &address) == 1,
-          automatic || validPeer(peer, tcpOnly: tcp) else {
+          (automatic && !subscription.isEmpty) || validPeer(peer, tcpOnly: tcp) else {
       throw TailnetFailure.invalidState
     }
     let fields: [String: Any] = ["networkName": name, "networkSecret": secret,
-      "peer": peer, "ipv4": ip, "tcpOnly": tcp, "allowP2P": allowP2P, "autoNodes": automatic]
+      "peer": peer, "ipv4": ip, "tcpOnly": tcp, "allowP2P": allowP2P, "autoNodes": automatic, "subscriptionURL": subscription, "backupSubscriptionURL": backup]
     let data = try JSONSerialization.data(withJSONObject: fields)
     let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
     if updated == errSecItemNotFound {
@@ -76,7 +80,8 @@ enum EasyTierConfiguration {
     let tcp = stored["tcpOnly"] as? Bool ?? true
     let manual = stored["peer"] as? String ?? ""
     let automatic = stored["autoNodes"] as? Bool ?? true
-    let peers = automatic ? await EasyTierNodes.shared.endpoints(force: forceNodes) : []
+    let sources = [stored["subscriptionURL"] as? String ?? "", stored["backupSubscriptionURL"] as? String ?? ""].filter { !$0.isEmpty }
+    let peers = automatic ? await EasyTierNodes.shared.endpoints(sources: sources, force: forceNodes) : []
     let fallback = validPeer(manual, tcpOnly: tcp) ? manual : ""
     guard !peers.isEmpty || !fallback.isEmpty else { throw TailnetFailure.invalidState }
     // App-only preferences must never cross the strict Rust JSON boundary.

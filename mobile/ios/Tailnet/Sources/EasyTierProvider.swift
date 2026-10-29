@@ -107,6 +107,10 @@ actor EasyTierProvider: EmbeddedTransport {
     }
     var status = try await details(target: targetHost ?? "")
     status.removeValue(forKey: "port")
+    let endpoint = status.removeValue(forKey: "directEndpoint") as? String ?? ""
+    if status["targetRoute"] as? String == "Direct" {
+      status["targetRoute"] = EmbeddedLocalRoute.contains(endpoint: endpoint) ? "LocalDirect" : "RemoteDirect"
+    }
     status["enabled"] = true
     status["background"] = "foreground-only"
     return status

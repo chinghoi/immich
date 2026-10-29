@@ -23,6 +23,8 @@ jobs:
           sw_vers
           xcodebuild -version
           ls /Applications | sort
+      - name: Verify public build contains no owner subscription
+        run: python3 custom/ios-easytier/test-privacy.py
       - name: Test exclusive provider switching and failure recovery
         run: bash custom/ios-easytier/test-selector.sh
       - name: Go toolchain (matches pinned libtailscale go.mod)

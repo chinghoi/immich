@@ -10,6 +10,9 @@ enum TailnetPlugin {
     return UserDefaults.standard.bool(forKey: enabledKey) ? .tailscale : .none
   }
   static func install(_ unused: Int?) async {}
+  static var isEnabled: Bool { mode != .none }
+  static let transportChanged = Notification.Name("transport-fixture")
+  static func configure(_ configuration: URLSessionConfiguration) {}
 }
 enum ProbeError: Error { case stopped, startup, overlap }
 actor ProviderProbe {
@@ -56,4 +59,9 @@ actor EasyTierProvider: EmbeddedTransport {
 enum EasyTierConfiguration {
   static func publicFields() throws -> [String: Any] { [:] }
   static func save(_ fields: [String: Any]) throws {}
+}
+
+final class VideoProxyServer {
+  static let shared = VideoProxyServer()
+  var session: URLSession?
 }

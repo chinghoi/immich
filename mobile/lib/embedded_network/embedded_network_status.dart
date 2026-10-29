@@ -78,6 +78,8 @@ class _EmbeddedNetworkStatusIndicatorState extends State<EmbeddedNetworkStatusIn
       ),
       (_, 'NeedsConfiguration', _) => ('等待配置', '请在网络设置中填写 EasyTier 配置并保存。', Icons.settings_ethernet, Colors.orange),
       (_, 'Unavailable', _) => ('连接不可用', '无法读取连接状态，请检查网络设置或重连。', Icons.error_outline_rounded, Colors.red),
+      (_, 'Running', 'LocalDirect') => ('局域网直连', '到当前服务器为一跳连接，实际端点位于手机的本地网段$suffix。', Icons.lan_outlined, Colors.green),
+      (_, 'Running', 'RemoteDirect') => ('远程直连', '到当前服务器为一跳连接，未经过中继$suffix。直连不代表吞吐速度。', Icons.link_rounded, Colors.green),
       (_, 'Running', 'Direct') => ('直连', '当前服务器的 $name 路由为直连$suffix。直连表示路径，不代表吞吐速度。', Icons.link_rounded, Colors.green),
       (_, 'Running', 'Relay') => ('中继', '当前服务器的 $name 路由经过中继$suffix。', Icons.compare_arrows_rounded, Colors.orange),
       (_, 'Running', 'Unlinked') => (

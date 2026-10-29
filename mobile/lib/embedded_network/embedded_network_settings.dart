@@ -19,6 +19,8 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
   final _secret = TextEditingController();
   final _peer = TextEditingController();
   final _ip = TextEditingController();
+  final _subscription = TextEditingController();
+  final _backupSubscription = TextEditingController();
   Timer? _timer;
   bool _tcpOnly = true;
   bool _allowP2P = true;
@@ -40,7 +42,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
   @override
   void dispose() {
     _timer?.cancel();
-    for (final controller in [_name, _secret, _peer, _ip]) {
+    for (final controller in [_name, _secret, _peer, _ip, _subscription, _backupSubscription]) {
       controller.dispose();
     }
     super.dispose();
@@ -55,6 +57,8 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       _name.text = fields['networkName'] as String? ?? '';
       _peer.text = fields['peer'] as String? ?? '';
       _ip.text = fields['ipv4'] as String? ?? '';
+      _subscription.text = fields['subscriptionURL'] as String? ?? '';
+      _backupSubscription.text = fields['backupSubscriptionURL'] as String? ?? '';
       setState(() {
         _hasSecret = fields['hasSecret'] == true;
         _tcpOnly = fields['tcpOnly'] != false;
@@ -120,6 +124,8 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
       'tcpOnly': _tcpOnly,
       'allowP2P': _allowP2P,
       'autoNodes': _autoNodes,
+      'subscriptionURL': _subscription.text.trim(),
+      'backupSubscriptionURL': _backupSubscription.text.trim(),
     });
     _secret.clear();
     if (mounted) {
@@ -217,7 +223,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
           if (mode == EmbeddedNetworkMode.easytier) ...[
             ExpansionTile(
               key: ValueKey('configuration-$_hasSecret'),
-              initiallyExpanded: !_hasSecret,
+              initiallyExpanded: !_hasSecret || (_autoNodes && _subscription.text.isEmpty),
               tilePadding: const EdgeInsets.symmetric(horizontal: 20),
               leading: const Icon(Icons.settings_ethernet_rounded),
               title: const Text('连接配置'),
@@ -260,10 +266,19 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('自动更新节点'),
-                  subtitle: const Text('自动获取可用节点，失败时使用已保存节点'),
+                  subtitle: const Text('从你的订阅更新，失败时使用该订阅的缓存或手动节点'),
                   value: _autoNodes,
                   onChanged: _busy ? null : (value) => setState(() => _autoNodes = value),
                 ),
+                if (_autoNodes) ...[
+                  ImmichTextInput(
+                    controller: _subscription, enabled: !_busy, autocorrect: false,
+                    label: '节点订阅地址', hintText: 'https://你的订阅地址/nodes.json',
+                    keyboardType: TextInputType.url, keyboardAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 6),
+                  Text('只保存在手机；升级后需填写一次订阅地址。', style: theme.textTheme.bodySmall),
+                ],
                 if (!_autoNodes)
                 ImmichTextInput(
                   controller: _peer, enabled: !_busy, autocorrect: false,
@@ -273,7 +288,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 const SizedBox(height: 16),
                 ImmichTextInput(
                   controller: _ip, enabled: !_busy, autocorrect: false,
-                  label: '手机虚拟 IPv4', hintText: '10.77.23.2',
+                  label: '手机虚拟 IPv4', hintText: '填写本手机的虚拟 IPv4',
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   keyboardAction: TextInputAction.done,
                 ),
@@ -322,7 +337,13 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 const Text('内嵌网络需要 App 保持前台。后台备份和桌面组件使用普通网络。切换通道不会修改服务器地址。'),
                 if (mode == EmbeddedNetworkMode.easytier) ...[
                   const SizedBox(height: 8),
-                  const Text('手机和 Mac 使用相同网络名称与密钥、不同虚拟 IP。Immich 服务器地址填写 Mac 的虚拟 IP。'),
+                  ImmichTextInput(
+                    controller: _backupSubscription, enabled: !_busy, autocorrect: false,
+                    label: '备用订阅地址（可选）',
+                    keyboardType: TextInputType.url, keyboardAction: TextInputAction.done,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('手机和 Mac 使用相同网络名称与密钥、不同虚拟 IP。Immich 服务器地址填写 Mac 的虚拟 IP；Wi-Fi 下自动尝试本地直连，无需改地址。'),
                   const SizedBox(height: 8),
                   Text(!_allowP2P ? '通过可用节点中继，不尝试打洞。'
                       : _tcpOnly ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。'
