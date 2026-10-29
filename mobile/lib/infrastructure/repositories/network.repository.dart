@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:cupertino_http/cupertino_http.dart';
 import 'package:http/http.dart' as http;
+import 'package:immich_mobile/embedded_network/transport_refresh_queue.dart';
 import 'package:immich_mobile/providers/infrastructure/platform.provider.dart';
 import 'package:immich_mobile/tailnet/tailnet_session.dart';
-import 'package:immich_mobile/embedded_network/transport_refresh_queue.dart';
 import 'package:ok_http/ok_http.dart';
 import 'package:web_socket/web_socket.dart';
 

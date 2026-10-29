@@ -192,6 +192,7 @@ void main() {
       expect(find.text('保存并连接'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     }
+    debugDefaultTargetPlatformOverride = null;
   });
   testWidgets('provider settings are absent on Android', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
