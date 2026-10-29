@@ -1,0 +1,57 @@
+name: Private rollback snapshot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Snapshot custom history and encrypt for the owner's local key
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git clone --mirror "https://github.com/$REPO.git" history.git >/dev/null 2>&1
+          cd history.git
+          git for-each-ref --format='%(refname) %(objectname)' refs/heads refs/tags > ../refs.txt
+          git bundle create ../custom-history.bundle --branches --tags ^8303cb117e197c700332b33b61b45314c9cc5bb4 ^fda68f972ff1f0e1f010f7083de2a4a75b59bce0 ^256eb55dbe92ac77e02794442f9487e88ffed2b1
+          git bundle verify ../custom-history.bundle >/dev/null 2>&1
+          cd ..
+          cat > recipient.crt <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIDyDCCAjACCQDU9hcGFbRNhDANBgkqhkiG9w0BAQsFADAmMSQwIgYDVQQDDBtS
+          ZXBvc2l0b3J5IHByaXZhY3kgcm9sbGJhY2swHhcNMjYxMDI5MDgwMTIxWhcNMzYx
+          MDI2MDgwMTIxWjAmMSQwIgYDVQQDDBtSZXBvc2l0b3J5IHByaXZhY3kgcm9sbGJh
+          Y2swggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQDl+Y7ykWyXRhsfaOtI
+          XXtynk+HGyvW71rmH6aIfNlVQY4y9fDxfhx1vww7M/P2PZWJFuhe8/ZHMhWFZp1V
+          sYYPKteayO4xnhfvpiHpEca5ajsxnl3A88m5D1Gpju/HwyZoPhCBO8wjV303qKfJ
+          RtUVY8OjyLnsf5cxa3YOTstWWkzvYngh+vw4XmY0jYqlXE8jqiY12lEgO8AuQa6k
+          UoposgP0+WU0xu5grAlorN6u/k7SKiATkhykS6k/x61b7wELnJ21HMypJOOK0Ywm
+          pCqSV/5RfUBBG6fzGtD9cbApysT3BGZJTgs/1/YWYNFhzaZVTsPiWWbEmfBpdT6N
+          SPt9V7XVPUVSJLSHvmGz+3tQPkNr/oOt62K6wT6V013P7Gew4dNM/qdsAH4Icjzu
+          j07VLQDOAUtQWXoHDzysWRifui08tvQPmVzaFLoPm+iU9PtZ+cgBbYz0ycil+y5D
+          QYfYykYPJvtdSoDmv8+rmGLNxNb+pPCAcQRiEWss7TCZy80CAwEAATANBgkqhkiG
+          9w0BAQsFAAOCAYEAsARX/HxJprSDvgXBtO10aDVVpF19kqUrqYko9vSpIcVPTWsF
+          YN8ukNLzmm8r1IMUMSsfGwScV9awUeVqNUXphPw1JFg8yAxo/ZhTrJM2hJzwldAw
+          lgmHLd0kGmY+uApA0XFgZb75CgwAeu+l5XHH+QNMGFkc/+IN8XGY+rSZFgCKzJyK
+          SWdcUZ7Uk0YiY/Hmf+z3GmcDHa3Ik+xzM/HgLknASllGmIE9oLoH1YJUYEPgVp4l
+          Q7MdCl7Wa3fN07WhjQWGbJ5VzLfI9mNR5QJPAEZGgJhOU2mAciC8HWvUsxZKUZuU
+          ZwQhzRnDf+ovmonWBp7mRdoATlC6t93dwFGox6PP2x267wdQ/SzE0+TT7Q9l/ULG
+          /1lLHRxQXRAbrn2Y7oC/3aTXQt1cuqWMw9es63bTLsPTitFK+153Pk8/en13+5Vt
+          N4+5vdyKWpdPUeFaW5BDlu99e5T/bREVaABX+ade0ycR1OluEfpbNc59O+pyXOOw
+          y84hHVPfKhFY1tGF
+          -----END CERTIFICATE-----
+          CERT
+          tar -cf snapshot.tar refs.txt custom-history.bundle
+          openssl cms -encrypt -binary -aes256 -in snapshot.tar -out rollback.cms -outform DER recipient.crt
+          sha256sum rollback.cms > rollback.sha256
+          rm -f snapshot.tar custom-history.bundle
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: encrypted-privacy-rollback
+          path: |
+            rollback.cms
+            rollback.sha256
+          retention-days: 1
