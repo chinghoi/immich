@@ -237,7 +237,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               children: [
             SettingListTile(
               title: '连接策略',
-              subtitle: '${strategies[strategy]} · 更改后请保存',
+              subtitle: strategies[strategy],
               leading: const Icon(Icons.alt_route_rounded),
               trailing: const Icon(Icons.chevron_right_rounded),
               contentPadding: EdgeInsets.zero,
@@ -251,6 +251,10 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                 }
               },
             ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('修改后点「保存并连接」生效', style: theme.textTheme.bodySmall),
+                ),
                 const SizedBox(height: 12),
                 ImmichTextInput(
                   controller: _name, enabled: !_busy, autocorrect: false,
