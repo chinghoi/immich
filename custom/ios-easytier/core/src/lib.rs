@@ -37,7 +37,7 @@ struct Options {
     instance_id: String,
     #[serde(default = "default_tcp")]
     tcp_only: bool,
-    #[serde(default = "default_tcp")]
+    #[serde(default = "default_tcp", rename = "allowP2P", alias = "allowP2p")]
     allow_p2p: bool,
 }
 fn default_tcp() -> bool {
