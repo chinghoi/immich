@@ -10,6 +10,7 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static let transportChanged = Notification.Name("immich.tailnet.transportChanged")
   public static var rebuildSession: (() -> Void)?
   public static var expireTransfers: (() -> Void)?
+  public static var releaseSessionPointer: ((Int64) -> Void)?
   public static var serverHost: (() -> String?)?
   private static var graceTask: UIBackgroundTaskIdentifier = .invalid
   private static let controller = EmbeddedNetworkController()
@@ -18,7 +19,9 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   private let channel: FlutterMethodChannel
   private static let monitor = NWPathMonitor()
   private static var monitoring = false
-  private static var previousPath: String?
+  @MainActor private static var previousPath: String?
+  @MainActor private static var recoveryTask: Task<Void, Never>?
+  @MainActor private static var recoveryWindow = EmbeddedRecoveryWindow()
 
   public static var mode: EmbeddedNetworkMode {
     if let value = UserDefaults.standard.string(forKey: "immich.network.mode") {
@@ -71,35 +74,49 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
     monitoring = true
     lock.unlock()
     monitor.pathUpdateHandler = { path in
-      let signature = "\(path.status)-\(path.availableInterfaces.filter { path.usesInterfaceType($0.type) }.map { $0.name }.sorted())"
-      let previous = Self.previousPath
-      Self.previousPath = signature
-      guard previous != nil, previous != signature, path.status == .satisfied, Self.isEnabled else { return }
-      // The SDK handles path changes. Preserve active sessions unless iOS has
-      // actually reclaimed their local listener; avoid restarting every socket.
-      Task { try? await Self.controller.checkLoopback() }
+      let signature = "\(path.status)-\(path.availableInterfaces.filter { path.usesInterfaceType($0.type) }.map { $0.name }.sorted())-\(EmbeddedLocalRoute.fingerprint())"
+      Task { @MainActor in
+        let previous = Self.previousPath
+        Self.previousPath = signature
+        guard previous != nil, previous != signature, path.status == .satisfied else { return }
+        Self.scheduleRecovery()
+      }
     }
     monitor.start(queue: DispatchQueue(label: "immich.tailnet.path"))
+  }
+
+  @MainActor private static func scheduleRecovery() {
+    recoveryTask?.cancel()
+    guard isEnabled, UIApplication.shared.applicationState == .active else { return }
+    recoveryTask = Task { @MainActor in
+      do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
+      guard !Task.isCancelled, UIApplication.shared.applicationState == .active else { return }
+      try? await controller.checkLoopback()
+    }
   }
 
   deinit { NotificationCenter.default.removeObserver(self) }
 
   @objc private func changed() { channel.invokeMethod("transportChanged", arguments: nil) }
 
-  public func applicationDidBecomeActive(_ application: UIApplication) {
+  @MainActor public func applicationDidBecomeActive(_ application: UIApplication) {
+    Self.recoveryWindow.end()
     if Self.graceTask != .invalid {
       application.endBackgroundTask(Self.graceTask)
       Self.graceTask = .invalid
     }
     guard Self.isEnabled else { return }
-    Task { try? await Self.controller.checkLoopback() }
+    Self.scheduleRecovery()
   }
 
-  public func applicationDidEnterBackground(_ application: UIApplication) {
+  @MainActor public func applicationDidEnterBackground(_ application: UIApplication) {
+    Self.recoveryTask?.cancel()
     guard Self.isEnabled, Self.graceTask == .invalid else { return }
+    let epoch = Self.recoveryWindow.begin()
     // A legitimate, finite UIKit task for finishing current file transfers.
     // iOS owns the budget. No background modes, timers, audio or VPN workaround.
     Self.graceTask = application.beginBackgroundTask(withName: "Finish Immich transfers") {
+      guard Self.recoveryWindow.expire(epoch) else { return }
       Self.expireTransfers?()
       application.endBackgroundTask(Self.graceTask)
       Self.graceTask = .invalid
@@ -112,8 +129,17 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
         let response: Any?
         switch call.method {
         case "enabled": response = Self.isEnabled
+        case "releaseClientPointer":
+          guard let pointer = (call.arguments as? [String: Any])?["pointer"] as? NSNumber else {
+            throw TailnetFailure.invalidState
+          }
+          Self.releaseSessionPointer?(pointer.int64Value)
+          response = nil
         case "prepare":
-          if Self.isEnabled { try await Self.controller.prepare() }
+          if Self.isEnabled {
+            guard await MainActor.run(body: { UIApplication.shared.applicationState != .background }) else { throw TailnetFailure.disabled }
+            try await Self.controller.prepare()
+          }
           response = nil
         case "select":
           guard let args = call.arguments as? [String: Any],
@@ -147,7 +173,11 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
           response = nil
         case "status":
           let arguments = call.arguments as? [String: Any]
-          response = try await Self.controller.status(targetHost: arguments?["serverHost"] as? String)
+          if await MainActor.run(body: { UIApplication.shared.applicationState == .background }) {
+            response = ["mode": Self.mode.rawValue, "enabled": Self.isEnabled, "state": "Suspended", "targetRoute": "Unlinked"]
+            break
+          }
+          response = try await Self.controller.status(targetHost: arguments?["serverHost"] as? String ?? Self.serverHost?())
         default:
           await MainActor.run { result(FlutterMethodNotImplemented) }
           return

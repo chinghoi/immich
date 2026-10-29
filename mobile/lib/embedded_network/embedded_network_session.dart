@@ -52,6 +52,9 @@ class EmbeddedNetworkSession {
   static Future<void> saveConfiguration(Map<String, dynamic> fields) =>
       channel.invokeMethod<void>('saveConfiguration', fields);
 
+  static Future<void> releaseClientPointer(int pointer) =>
+      channel.invokeMethod<void>('releaseClientPointer', {'pointer': pointer});
+
   static Future<void> action(String action) => channel.invokeMethod<void>(action);
 
   static Future<void> requireSystemBackgroundTransport() async {

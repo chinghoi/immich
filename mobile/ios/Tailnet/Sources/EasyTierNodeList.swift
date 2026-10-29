@@ -39,7 +39,7 @@ actor EasyTierNodes {
   private var refreshing = Set<String>()
   private var lastAttempt = [String: Date]()
   init(defaults: UserDefaults = .standard,
-       fetch: @escaping @Sendable (URL) async throws -> Data = EasyTierNodes.download) {
+       fetch: @escaping @Sendable (URL) async throws -> Data = { url in try await EasyTierNodes.download(url) }) {
     self.defaults = defaults
     self.fetch = fetch
     // Retire the old cache that had an implicit, compiled-in owner.

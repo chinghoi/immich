@@ -15,6 +15,7 @@ cp "$ROOT/custom/ios-easytier/tests/ProviderStubs.swift" "$WORK/Sources/Embedded
 cp "$ROOT/mobile/ios/Tailnet/Sources/EasyTierNodeList.swift" "$WORK/Sources/EmbeddedNetworkCore/"
 cp "$ROOT/custom/ios-easytier/tests/NodeListTests.swift" "$WORK/Tests/EmbeddedNetworkCoreTests/"
 cp "$ROOT/custom/ios-easytier/tests/SelectorTests.swift" "$WORK/Tests/EmbeddedNetworkCoreTests/"
+cp "$ROOT/mobile/ios/Tailnet/Sources/EmbeddedRecoveryWindow.swift" "$WORK/Sources/EmbeddedNetworkCore/"
 cp "$ROOT/mobile/ios/Tailnet/Sources/EmbeddedLocalRoute.swift" "$WORK/Sources/EmbeddedNetworkCore/"
 python3 - "$ROOT" "$WORK" <<'PY'
 import pathlib,sys

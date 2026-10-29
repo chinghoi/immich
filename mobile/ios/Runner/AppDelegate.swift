@@ -20,6 +20,7 @@ import background_downloader
       URLSessionManager.configure(configuration)
       return configuration
     }
+    TailnetPlugin.releaseSessionPointer = { URLSessionManager.shared.releaseSessionPointer($0) }
     TailnetPlugin.serverHost = {
       let saved = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
       return saved.first.flatMap { URL(string: $0)?.host }
@@ -30,7 +31,7 @@ import background_downloader
     }
     TailnetPlugin.expireTransfers = {
       URLSessionManager.shared.session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
-      UrlSessionDelegate.resetSession()
+      UrlSessionDelegate.cancelSession()
     }
     URLSessionManager.patchBackgroundDownloader()
     BackgroundWorkerApiImpl.registerBackgroundWorkers()
