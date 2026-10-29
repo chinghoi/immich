@@ -118,6 +118,15 @@ fn stop() -> Result<(), ()> {
     }
     Ok(())
 }
+fn preferred_connection(peer: &easytier::proto::api::instance::PeerInfo)
+    -> Option<&easytier::proto::api::instance::PeerConnInfo> {
+    let selected = peer.default_conn_id.as_ref().map(|id|
+        format!("{:08x}{:08x}{:08x}{:08x}", id.part1, id.part2, id.part3, id.part4));
+    peer.conns.iter().filter(|c| !c.is_closed)
+        .find(|c| selected.as_ref().is_some_and(|id| c.conn_id.replace('-', "").eq_ignore_ascii_case(id)))
+        .or_else(|| peer.conns.iter().filter(|c| !c.is_closed)
+            .min_by_key(|c| c.stats.as_ref().map(|s| s.latency_us).unwrap_or(u64::MAX)))
+}
 fn status(target: &str) -> Result<String, ()> {
     let active = INSTANCE.lock().map_err(|_| ())?;
     let Some(instance) = active.as_ref() else {
@@ -143,7 +152,7 @@ fn status(target: &str) -> Result<String, ()> {
                 .peers
                 .iter()
                 .find(|p| p.peer_id == hop)
-                .and_then(|p| p.conns.iter().find(|c| !c.is_closed))
+                .and_then(preferred_connection)
                 .and_then(|c| c.tunnel.as_ref());
             let protocol = tunnel.map(|t| t.tunnel_type.as_str()).unwrap_or("");
             let endpoint = if route.cost <= 1 {
@@ -388,6 +397,31 @@ mod tests {
                 .unwrap();
         }
         fixture.join().unwrap();
+    }
+    #[test]
+    fn route_status_uses_the_active_connection_not_arbitrary_peer_order() {
+        use easytier::proto::api::instance::{PeerInfo, PeerConnInfo, PeerConnStats};
+        let first = PeerConnInfo {
+            conn_id: "00000000-0000-0000-0000-000000000001".into(),
+            stats: Some(PeerConnStats { latency_us: 10, ..Default::default() }),
+            ..Default::default()
+        };
+        let second = PeerConnInfo {
+            conn_id: "00000000-0000-0000-0000-000000000002".into(),
+            stats: Some(PeerConnStats { latency_us: 100, ..Default::default() }),
+            ..Default::default()
+        };
+        let mut peer = PeerInfo { conns: vec![first, second], ..Default::default() };
+        let mut selected = easytier::proto::common::Uuid::default();
+        selected.part4 = 2;
+        peer.default_conn_id = Some(selected);
+        assert!(preferred_connection(&peer).unwrap().conn_id.ends_with('2'));
+        peer.conns[1].is_closed = true;
+        assert!(preferred_connection(&peer).unwrap().conn_id.ends_with('1'));
+        peer.conns.reverse();
+        assert!(preferred_connection(&peer).unwrap().conn_id.ends_with('1'));
+        peer.conns[1].is_closed = true;
+        assert!(preferred_connection(&peer).is_none());
     }
     #[test]
     fn ffi_handles_invalid_input_without_unwinding() {
