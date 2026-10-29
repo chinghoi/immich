@@ -55,6 +55,9 @@ class EmbeddedNetworkSession {
   static Future<void> releaseClientPointer(int pointer) =>
       channel.invokeMethod<void>('releaseClientPointer', {'pointer': pointer});
 
+  static Future<void> confirmClientPointer(int pointer) =>
+      channel.invokeMethod<void>('confirmSessionPointer', {'pointer': pointer});
+
   static Future<void> action(String action) => channel.invokeMethod<void>(action);
 
   static Future<void> requireSystemBackgroundTransport() async {

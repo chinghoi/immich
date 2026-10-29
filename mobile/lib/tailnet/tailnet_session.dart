@@ -12,6 +12,7 @@ class TailnetSession {
   static Future<Map<String, dynamic>> status({String? serverHost}) =>
       EmbeddedNetworkSession.status(serverHost: serverHost);
   static Future<void> releaseClientPointer(int pointer) => EmbeddedNetworkSession.releaseClientPointer(pointer);
+  static Future<void> confirmClientPointer(int pointer) => EmbeddedNetworkSession.confirmClientPointer(pointer);
   static Future<void> action(String action) => EmbeddedNetworkSession.action(action);
   static Future<void> requireSystemBackgroundTransport() => EmbeddedNetworkSession.requireSystemBackgroundTransport();
 }

@@ -38,6 +38,7 @@ class NetworkRepository {
         await TailnetSession.releaseClientPointer(clientPointer.address);
       }
       if (clientPointer == _clientPointer) {
+        await TailnetSession.confirmClientPointer(clientPointer.address);
         return;
       }
       final replacement = CupertinoClient.fromSharedSession(session);
@@ -46,6 +47,7 @@ class NetworkRepository {
       _clientPointer = clientPointer;
       _client = replacement;
       previous?.close();
+      await TailnetSession.confirmClientPointer(clientPointer.address);
     } else {
       if (clientPointer == _clientPointer) {
         return;

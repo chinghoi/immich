@@ -40,6 +40,7 @@ class URLSessionManager: NSObject {
 
   private let sessionLock = NSLock()
   private var currentSession: URLSession
+  private var retiredSessions: [URLSession] = []
   private var pointerHandoffs: [Int: (session: URLSession, count: Int)] = [:]
   var session: URLSession {
     sessionLock.lock(); defer { sessionLock.unlock() }
@@ -95,8 +96,8 @@ class URLSessionManager: NSObject {
     sessionLock.lock()
     let previous = currentSession
     currentSession = replacement
+    retiredSessions.append(previous)
     sessionLock.unlock()
-    previous.invalidateAndCancel()
     VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? replacement : nil
     NotificationCenter.default.post(name: TailnetPlugin.transportChanged, object: nil)
   }
@@ -109,6 +110,20 @@ class URLSessionManager: NSObject {
     guard let held = pointerHandoffs[key] else { return }
     if held.count == 1 { pointerHandoffs.removeValue(forKey: key) }
     else { pointerHandoffs[key] = (held.session, held.count - 1) }
+  }
+
+  /// Retire old sessions only after Dart installed the current generation.
+  /// A stale acknowledgement must not retire a session still used by Dart.
+  func confirmSessionPointer(_ pointer: Int64) {
+    sessionLock.lock()
+    guard Int(bitPattern: Unmanaged.passUnretained(currentSession).toOpaque()) == Int(pointer) else {
+      sessionLock.unlock()
+      return
+    }
+    let retired = retiredSessions
+    retiredSessions.removeAll()
+    sessionLock.unlock()
+    retired.forEach { $0.invalidateAndCancel() }
   }
 
   static func setServerUrls(_ urls: [String]) {

@@ -13,6 +13,10 @@ final class SessionLifetimeTests: XCTestCase {
     try await Task.sleep(nanoseconds: 1_000_000_000)
     XCTAssertNotNil(returnedSession, "Dart can receive a freed URLSession when transport reset races the pointer response")
     manager.releaseSessionPointer(Int64(Int(bitPattern: pointer)))
+    XCTAssertNotNil(returnedSession, "The old session must stay usable until Dart installs the new generation")
+    let current = manager.sessionPointer
+    manager.releaseSessionPointer(Int64(Int(bitPattern: current)))
+    manager.confirmSessionPointer(Int64(Int(bitPattern: current)))
     try await Task.sleep(nanoseconds: 100_000_000)
     XCTAssertNil(returnedSession, "The bridge must release its handoff after Dart acknowledges")
   }
@@ -26,9 +30,30 @@ final class SessionLifetimeTests: XCTestCase {
     XCTAssertNotNil(old)
     manager.releaseSessionPointer(Int64(Int(bitPattern: second)))
     manager.releaseSessionPointer(Int64(Int(bitPattern: second))) // duplicate acknowledgements are harmless
+    let current = manager.sessionPointer
+    manager.releaseSessionPointer(Int64(Int(bitPattern: current)))
+    manager.confirmSessionPointer(Int64(Int(bitPattern: current)))
     try await Task.sleep(nanoseconds: 100_000_000)
     XCTAssertNil(old)
   }
+  func testOldSessionRemainsUsableUntilCurrentGenerationIsInstalled() async throws {
+    let manager = URLSessionManager.shared
+    let previous = manager.session
+    let stalePointer = manager.sessionPointer
+    manager.recreateSession()
+    manager.releaseSessionPointer(Int64(Int(bitPattern: stalePointer)))
+    manager.confirmSessionPointer(Int64(Int(bitPattern: stalePointer)))
+
+    // This is the call that throws NSGenericException after invalidation.
+    let request = URL(string: "ws://127.0.0.1:9/socket")!
+    let socket = previous.webSocketTask(with: request)
+    socket.cancel()
+
+    let current = manager.sessionPointer
+    manager.releaseSessionPointer(Int64(Int(bitPattern: current)))
+    manager.confirmSessionPointer(Int64(Int(bitPattern: current)))
+  }
+
   func testExpiredBackgroundCallbackCannotCancelANewerForegroundEpoch() {
     var window = EmbeddedRecoveryWindow()
     let old = window.begin()

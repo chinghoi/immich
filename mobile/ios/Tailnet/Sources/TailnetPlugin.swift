@@ -11,6 +11,7 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static var rebuildSession: (() -> Void)?
   public static var expireTransfers: (() -> Void)?
   public static var releaseSessionPointer: ((Int64) -> Void)?
+  public static var confirmSessionPointer: ((Int64) -> Void)?
   public static var serverHost: (() -> String?)?
   private static var graceTask: UIBackgroundTaskIdentifier = .invalid
   private static let controller = EmbeddedNetworkController()
@@ -134,6 +135,12 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
             throw TailnetFailure.invalidState
           }
           Self.releaseSessionPointer?(pointer.int64Value)
+          response = nil
+        case "confirmSessionPointer":
+          guard let pointer = (call.arguments as? [String: Any])?["pointer"] as? NSNumber else {
+            throw TailnetFailure.invalidState
+          }
+          Self.confirmSessionPointer?(pointer.int64Value)
           response = nil
         case "prepare":
           if Self.isEnabled {

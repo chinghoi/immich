@@ -184,7 +184,12 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
     };
     final strategy = !_allowP2P ? 'relay' : _tcpOnly ? 'tcp' : 'auto';
     final state = switch (_status['state']) {
-      'Running' => _status['connected'] == false ? '等待节点连接' : '已启动',
+      'Running' => switch (_status['targetRoute']) {
+        'LocalDirect' => '局域网直连',
+        'RemoteDirect' || 'Direct' => '直连',
+        'Relay' => '中继',
+        _ => '等待连接服务器',
+      },
       'NeedsLogin' => '等待授权',
       'NeedsMachineAuth' => '等待管理员批准',
       'NeedsConfiguration' => '尚未配置',
@@ -232,7 +237,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
               children: [
             SettingListTile(
               title: '连接策略',
-              subtitle: strategies[strategy],
+              subtitle: '${strategies[strategy]} · 更改后请保存',
               leading: const Icon(Icons.alt_route_rounded),
               trailing: const Icon(Icons.chevron_right_rounded),
               contentPadding: EdgeInsets.zero,
@@ -277,7 +282,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                     keyboardType: TextInputType.url, keyboardAction: TextInputAction.next,
                   ),
                   const SizedBox(height: 6),
-                  Text('只保存在手机；升级后需填写一次订阅地址。', style: theme.textTheme.bodySmall),
+                  Text('地址保存在手机，获取失败时优先使用缓存。', style: theme.textTheme.bodySmall),
                 ],
                 if (!_autoNodes)
                 ImmichTextInput(
@@ -304,7 +309,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                     FocusScope.of(context).unfocus();
                     unawaited(_run(_save));
                   },
-                  child: Text(_hasSecret ? '连接' : '保存并连接'),
+                  child: const Text('保存并连接'),
                 ),
               ),
             ),
@@ -331,10 +336,10 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
             ),
             ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 20),
-              title: const Text('更多'),
+              title: const Text('高级设置'),
               childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               children: [
-                const Text('内嵌网络需要 App 保持前台。后台备份和桌面组件使用普通网络。切换通道不会修改服务器地址。'),
+                const Text('内嵌组网需要 App 保持前台，后台运行受系统限制。切换方式不会修改服务器地址。'),
                 if (mode == EmbeddedNetworkMode.easytier) ...[
                   const SizedBox(height: 8),
                   ImmichTextInput(
@@ -343,7 +348,7 @@ class _EmbeddedNetworkSettingsState extends State<EmbeddedNetworkSettings> {
                     keyboardType: TextInputType.url, keyboardAction: TextInputAction.done,
                   ),
                   const SizedBox(height: 8),
-                  const Text('手机和 Mac 使用相同网络名称与密钥、不同虚拟 IP。Immich 服务器地址填写 Mac 的虚拟 IP；Wi-Fi 下自动尝试本地直连，无需改地址。'),
+                  const Text('手机和 Mac 使用相同网络名称及密钥、不同虚拟 IP。服务器地址填写 Mac 的虚拟 IP。'),
                   const SizedBox(height: 8),
                   Text(!_allowP2P ? '通过可用节点中继，不尝试打洞。'
                       : _tcpOnly ? '先通过节点接通，后台尝试 TCP 直连；失败继续中继。'

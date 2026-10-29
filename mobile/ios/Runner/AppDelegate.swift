@@ -21,6 +21,7 @@ import background_downloader
       return configuration
     }
     TailnetPlugin.releaseSessionPointer = { URLSessionManager.shared.releaseSessionPointer($0) }
+    TailnetPlugin.confirmSessionPointer = { URLSessionManager.shared.confirmSessionPointer($0) }
     TailnetPlugin.serverHost = {
       let saved = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
       return saved.first.flatMap { URL(string: $0)?.host }
