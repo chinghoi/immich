@@ -13,6 +13,8 @@ public final class TailnetPlugin: NSObject, FlutterPlugin {
   public static var releaseSessionPointer: ((Int64) -> Void)?
   public static var confirmSessionPointer: ((Int64) -> Void)?
   public static var serverHost: (() -> String?)?
+  public static var serverURL: (() -> String?)?
+  public static var probeServer: ((URL) async -> Bool)?
   private static var graceTask: UIBackgroundTaskIdentifier = .invalid
   private static let controller = EmbeddedNetworkController()
   private static let lock = NSLock()

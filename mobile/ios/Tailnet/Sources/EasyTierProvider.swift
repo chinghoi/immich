@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import UIKit
 import ImmichEasyTier
 
 /// SDK-specific work stays here. SOCKS is loopback-only, no TUN or system VPN.
@@ -7,6 +8,8 @@ import ImmichEasyTier
 actor EasyTierProvider: EmbeddedTransport {
   private var port: UInt16?
   private var installed = false
+  private var recoveryPolicy = EmbeddedRecoveryPolicy()
+  private var failedProbeHost: String?
 
   // Rust start/status/drop may block. They must never run on the UI executor.
   private func core<T: Sendable>(_ operation: @escaping @Sendable () -> T) async -> T {
@@ -86,7 +89,21 @@ actor EasyTierProvider: EmbeddedTransport {
   }
   func checkLoopback() async throws {
     guard let port else { try await prepare(); return }
-    if !(await listening(port)) { try await reconnect() }
+    guard await listening(port) else { try await reconnect(); return }
+    guard let probe = TailnetPlugin.probeServer,
+          let ownIP = (try? EasyTierConfiguration.load())?["ipv4"] as? String,
+          let url = EmbeddedRecoveryPolicy.pingURL(TailnetPlugin.serverURL?(), ownIP: ownIP) else { return }
+
+    let first = await probe(url)
+    if first { failedProbeHost = nil; return }
+    failedProbeHost = url.host
+    try await Task.sleep(nanoseconds: 2_000_000_000)
+    guard await MainActor.run(body: { UIApplication.shared.applicationState == .active }) else { return }
+    let second = await probe(url)
+    if second { failedProbeHost = nil; return }
+    guard recoveryPolicy.shouldRecover(first: first, second: second, now: Date()) else { return }
+    try await reconnect()
+    if await probe(url) { failedProbeHost = nil }
   }
   func reconnect() async throws {
     try await stop(forgetIdentity: false)
@@ -110,6 +127,16 @@ actor EasyTierProvider: EmbeddedTransport {
     let endpoint = status.removeValue(forKey: "directEndpoint") as? String ?? ""
     if status["targetRoute"] as? String == "Direct" {
       status["targetRoute"] = EmbeddedLocalRoute.contains(endpoint: endpoint) ? "LocalDirect" : "RemoteDirect"
+    }
+    if let failedProbeHost, failedProbeHost == targetHost {
+      if let probe = TailnetPlugin.probeServer,
+         let ownIP = (try? EasyTierConfiguration.load())?["ipv4"] as? String,
+         let url = EmbeddedRecoveryPolicy.pingURL(TailnetPlugin.serverURL?(), ownIP: ownIP),
+         await probe(url) {
+        self.failedProbeHost = nil
+      } else {
+        status["targetRoute"] = "Unlinked"
+      }
     }
     status["enabled"] = true
     status["background"] = "foreground-only"

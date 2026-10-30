@@ -26,6 +26,20 @@ import background_downloader
       let saved = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
       return saved.first.flatMap { URL(string: $0)?.host }
     }
+    TailnetPlugin.serverURL = {
+      UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY)?.first
+    }
+    TailnetPlugin.probeServer = { url in
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 4
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+      do {
+        let (data, response) = try await URLSessionManager.shared.session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: String] else { return false }
+        return object["res"] == "pong"
+      } catch { return false }
+    }
     TailnetPlugin.rebuildSession = {
       URLSessionManager.shared.recreateSession()
       UrlSessionDelegate.resetSession()
