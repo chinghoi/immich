@@ -12,6 +12,8 @@ ditto -c -k --keepParent "$simulator_app" "$output/Immich-Tailnet-SIMULATOR.zip"
 python3 - "$output" <<'PY'
 import hashlib,json,os,pathlib,subprocess,sys
 metadata=json.load(open('custom/ios-tailnet/dependencies.json'))
+metadata['easyTier']=json.load(open('custom/ios-easytier/dependencies.json'))
+metadata['easyTier']['cargoLockSHA256']=hashlib.sha256(pathlib.Path('custom/ios-easytier/core/Cargo.lock').read_bytes()).hexdigest()
 metadata.update(commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  signing='UNSIGNED: re-signing and a device provisioning profile are required',
  verification='Cloud simulator and unsigned build only; no real-device or home-tailnet acceptance')

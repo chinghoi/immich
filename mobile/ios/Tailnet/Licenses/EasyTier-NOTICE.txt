@@ -1,0 +1,8 @@
+EasyTier v2.6.4
+Copyright EasyTier contributors. LGPL-3.0.
+Pinned source: https://github.com/EasyTier/EasyTier/tree/8428a89d2dabc94c97d370ec607c6ca142473626
+This Immich fork's no-TUN adapter and build instructions:
+https://github.com/chinghoi/immich/tree/ios/easytier/custom/ios-easytier
+The SDK is statically linked. Corresponding source and cloud build recipes are
+provided in that repository so this unsigned application can be rebuilt/relinked.
+No Apple signing identity is provided or required to build unsigned artifacts.

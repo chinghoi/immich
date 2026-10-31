@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cupertino_http/cupertino_http.dart';
 import 'package:http/http.dart' as http;
+import 'package:immich_mobile/embedded_network/transport_refresh_queue.dart';
 import 'package:immich_mobile/providers/infrastructure/platform.provider.dart';
 import 'package:immich_mobile/tailnet/tailnet_session.dart';
 import 'package:ok_http/ok_http.dart';
@@ -11,31 +12,54 @@ import 'package:web_socket/web_socket.dart';
 class NetworkRepository {
   static http.Client? _client;
   static Pointer<Void>? _clientPointer;
+  static URLSession? _sharedSession;
   static final http.Client _forwardingClient = _CurrentSessionClient();
-  static Future<void>? _initializing;
+  static final _refreshQueue = TransportRefreshQueue();
 
   static Future<void> init() {
     if (!Platform.isIOS) {
       return _initialize();
     }
-    return _initializing ??= _initialize().whenComplete(() => _initializing = null);
+    return _refreshQueue.run(_initialize);
   }
 
   static Future<void> _initialize() async {
     if (Platform.isIOS) {
-      TailnetSession.onTransportChanged = init;
-      await TailnetSession.prepare();
+      if (TailnetSession.isRootIsolate) {
+        TailnetSession.onTransportChanged = () => _refreshQueue.run(_initialize, refresh: true);
+        await TailnetSession.prepare();
+      }
     }
     final clientPointer = Pointer<Void>.fromAddress(await networkApi.getClientPointer());
-    if (clientPointer == _clientPointer) {
-      return;
-    }
-    _clientPointer = clientPointer;
-    _client?.close();
     if (Platform.isIOS) {
-      final session = URLSession.fromRawPointer(clientPointer.cast());
-      _client = CupertinoClient.fromSharedSession(session);
+      // Native keeps this exact generation alive until the ObjC wrapper owns it.
+      late final URLSession session;
+      try {
+        session = URLSession.fromRawPointer(clientPointer.cast());
+      } finally {
+        await TailnetSession.releaseClientPointer(clientPointer.address);
+      }
+      if (clientPointer == _clientPointer) {
+        if (TailnetSession.isRootIsolate) {
+          await TailnetSession.confirmClientPointer(clientPointer.address);
+        }
+        return;
+      }
+      final replacement = CupertinoClient.fromSharedSession(session);
+      final previous = _client;
+      _sharedSession = session;
+      _clientPointer = clientPointer;
+      _client = replacement;
+      previous?.close();
+      if (TailnetSession.isRootIsolate) {
+        await TailnetSession.confirmClientPointer(clientPointer.address);
+      }
     } else {
+      if (clientPointer == _clientPointer) {
+        return;
+      }
+      _clientPointer = clientPointer;
+      _client?.close();
       _client = OkHttpClient.fromJniGlobalRef(
         clientPointer,
         configuration: const OkHttpClientConfiguration(
@@ -57,8 +81,7 @@ class NetworkRepository {
   // ignore: avoid-unused-parameters
   static Future<WebSocket> createWebSocket(Uri uri, {Map<String, String>? headers, Iterable<String>? protocols}) {
     if (Platform.isIOS) {
-      final session = URLSession.fromRawPointer(_clientPointer!.cast());
-      return CupertinoWebSocket.connectWithSession(session, uri, protocols: protocols);
+      return CupertinoWebSocket.connectWithSession(_sharedSession!, uri, protocols: protocols);
     } else {
       return OkHttpWebSocket.connectFromJniGlobalRef(_clientPointer!, uri, protocols: protocols);
     }
@@ -76,7 +99,12 @@ class NetworkRepository {
 /// ApiService and uploads can retain this object across a native session change.
 class _CurrentSessionClient extends http.BaseClient {
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) => NetworkRepository._client!.send(request);
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Background isolates cannot receive transport-change events. Reacquire
+    // the current native session at each request boundary.
+    if (!TailnetSession.isRootIsolate) await NetworkRepository.init();
+    return NetworkRepository._client!.send(request);
+  }
 
   @override
   void close() {} // The native session's lifetime is managed by NetworkRepository.

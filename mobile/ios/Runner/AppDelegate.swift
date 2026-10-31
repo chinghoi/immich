@@ -20,13 +20,33 @@ import background_downloader
       URLSessionManager.configure(configuration)
       return configuration
     }
+    TailnetPlugin.releaseSessionPointer = { URLSessionManager.shared.releaseSessionPointer($0) }
+    TailnetPlugin.confirmSessionPointer = { URLSessionManager.shared.confirmSessionPointer($0) }
+    TailnetPlugin.serverHost = {
+      let saved = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
+      return saved.first.flatMap { URL(string: $0)?.host }
+    }
+    TailnetPlugin.serverURL = {
+      UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY)?.first
+    }
+    TailnetPlugin.probeServer = { url in
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 4
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+      do {
+        let (data, response) = try await URLSessionManager.shared.session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: String] else { return false }
+        return object["res"] == "pong"
+      } catch { return false }
+    }
     TailnetPlugin.rebuildSession = {
       URLSessionManager.shared.recreateSession()
       UrlSessionDelegate.resetSession()
     }
     TailnetPlugin.expireTransfers = {
       URLSessionManager.shared.session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
-      UrlSessionDelegate.resetSession()
+      UrlSessionDelegate.cancelSession()
     }
     URLSessionManager.patchBackgroundDownloader()
     BackgroundWorkerApiImpl.registerBackgroundWorkers()

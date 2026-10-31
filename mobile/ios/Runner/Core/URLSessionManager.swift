@@ -38,7 +38,14 @@ extension UserDefaults {
 class URLSessionManager: NSObject {
   static let shared = URLSessionManager()
 
-  private(set) var session: URLSession
+  private let sessionLock = NSLock()
+  private var currentSession: URLSession
+  private var retiredSessions: [URLSession] = []
+  private var pointerHandoffs: [Int: (session: URLSession, count: Int)] = [:]
+  var session: URLSession {
+    sessionLock.lock(); defer { sessionLock.unlock() }
+    return currentSession
+  }
   let delegate: URLSessionManagerDelegate
   private static let cacheDir: URL = {
     let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
@@ -61,12 +68,17 @@ class URLSessionManager: NSObject {
   private static var isSyncing = false
 
   var sessionPointer: UnsafeMutableRawPointer {
-    Unmanaged.passUnretained(session).toOpaque()
+    sessionLock.lock(); defer { sessionLock.unlock() }
+    let pointer = Unmanaged.passUnretained(currentSession).toOpaque()
+    let key = Int(bitPattern: pointer)
+    let count = pointerHandoffs[key]?.count ?? 0
+    pointerHandoffs[key] = (currentSession, count + 1)
+    return pointer
   }
 
   private override init() {
     delegate = URLSessionManagerDelegate()
-    session = Self.buildSession(delegate: delegate)
+    currentSession = Self.buildSession(delegate: delegate)
     super.init()
     Self.serverUrls = UserDefaults.group.stringArray(forKey: SERVER_URLS_KEY) ?? []
     NotificationCenter.default.addObserver(
@@ -80,11 +92,38 @@ class URLSessionManager: NSObject {
   func recreateSession() {
     // Mode changes and stale loopback recovery must cancel old transport work.
     // Dart holds a stable forwarding client and reacquires the replacement.
-    let previous = session
-    session = Self.buildSession(delegate: delegate)
-    previous.invalidateAndCancel()
-    VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? session : nil
+    let replacement = Self.buildSession(delegate: delegate)
+    sessionLock.lock()
+    let previous = currentSession
+    currentSession = replacement
+    retiredSessions.append(previous)
+    sessionLock.unlock()
+    VideoProxyServer.shared.session = TailnetPlugin.isEnabled ? replacement : nil
     NotificationCenter.default.post(name: TailnetPlugin.transportChanged, object: nil)
+  }
+
+  /// Dart acknowledges only AFTER fromRawPointer has retained the ObjC object.
+  /// A pointer returned by Pigeon must survive asynchronous transport replacement.
+  func releaseSessionPointer(_ pointer: Int64) {
+    sessionLock.lock(); defer { sessionLock.unlock() }
+    let key = Int(pointer)
+    guard let held = pointerHandoffs[key] else { return }
+    if held.count == 1 { pointerHandoffs.removeValue(forKey: key) }
+    else { pointerHandoffs[key] = (held.session, held.count - 1) }
+  }
+
+  /// Retire old sessions only after Dart installed the current generation.
+  /// A stale acknowledgement must not retire a session still used by Dart.
+  func confirmSessionPointer(_ pointer: Int64) {
+    sessionLock.lock()
+    guard Int(bitPattern: Unmanaged.passUnretained(currentSession).toOpaque()) == Int(pointer) else {
+      sessionLock.unlock()
+      return
+    }
+    let retired = retiredSessions
+    retiredSessions.removeAll()
+    sessionLock.unlock()
+    retired.forEach { $0.invalidateAndCancel() }
   }
 
   static func setServerUrls(_ urls: [String]) {

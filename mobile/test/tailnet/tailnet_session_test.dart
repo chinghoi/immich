@@ -1,7 +1,10 @@
+import 'dart:isolate';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/tailnet/tailnet_session.dart';
+import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,8 +19,12 @@ void main() {
       call,
     ) async {
       calls.add(call.method);
-      if (call.method == 'enabled') return enabled;
-      if (call.method == 'status') return {'enabled': enabled, 'state': 'NeedsLogin'};
+      if (call.method == 'enabled') {
+        return enabled;
+      }
+      if (call.method == 'status') {
+        return {'enabled': enabled, 'state': 'NeedsLogin'};
+      }
       return null;
     });
   });
@@ -29,6 +36,15 @@ void main() {
       TailnetSession.channel,
       null,
     );
+  });
+
+  test('background isolate does not register an incoming platform handler', () async {
+    expect(EmbeddedNetworkSession.isRootIsolate, isTrue);
+    final isRoot = await Isolate.run(() {
+      EmbeddedNetworkSession.installTransportListener();
+      return EmbeddedNetworkSession.isRootIsolate;
+    });
+    expect(isRoot, isFalse);
   });
 
   test('system background queue is rejected even before tailnet authorization completes', () async {

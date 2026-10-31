@@ -1,7 +1,8 @@
 Pod::Spec.new do |s|
   s.name = 'ImmichTailnet'
   s.version = '0.1.0'
-  s.summary = 'Optional, process-local Tailscale transport for the iOS fork'
+  s.static_framework = true
+  s.summary = 'Optional process-local network providers for the iOS fork'
   s.homepage = 'https://github.com/chinghoi/immich'
   s.license = { :type => 'AGPL-3.0', :file => '../../../LICENSE' }
   s.author = 'Immich fork contributors'
@@ -10,5 +11,7 @@ Pod::Spec.new do |s|
   s.swift_version = '5.0'
   s.source_files = 'Sources/**/*.swift'
   s.vendored_frameworks = 'Frameworks/TailscaleKit.xcframework'
+  s.resource_bundles = { 'EmbeddedNetworkNotices' => ['Licenses/*'] }
+  s.dependency 'ImmichEasyTierCore'
   s.dependency 'Flutter'
 end

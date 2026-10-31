@@ -1,0 +1,21 @@
+name: Network native regression
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: xcode-27
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test configuration, concurrent lifecycle and native session ownership
+        run: bash custom/ios-easytier/test-selector.sh
+      - name: Reproduce WebSocket creation after native session invalidation
+        run: |
+          clang -fobjc-arc -framework Foundation custom/ios-easytier/tests/invalidated-websocket.m -o /tmp/immich-websocket-probe
+          /tmp/immich-websocket-probe
