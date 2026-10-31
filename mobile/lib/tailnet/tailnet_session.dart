@@ -5,6 +5,7 @@ export 'package:immich_mobile/embedded_network/embedded_network_session.dart' sh
 
 class TailnetSession {
   static const channel = EmbeddedNetworkSession.channel;
+  static bool get isRootIsolate => EmbeddedNetworkSession.isRootIsolate;
   static set onTransportChanged(Future<void> Function()? callback) =>
       EmbeddedNetworkSession.onTransportChanged = callback;
   static Future<void> prepare() => EmbeddedNetworkSession.prepare();

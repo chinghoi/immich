@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -11,18 +12,24 @@ class EmbeddedNetworkSession {
   static bool _listening = false;
   static Future<void> Function()? onTransportChanged;
 
+  static bool get isRootIsolate => ui.RootIsolateToken.instance != null;
+
+  @visibleForTesting
+  static void installTransportListener() {
+    if (!isRootIsolate || _listening) return;
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'transportChanged') {
+        await onTransportChanged?.call();
+      }
+    });
+    _listening = true;
+  }
+
   static Future<void> prepare() async {
     if (defaultTargetPlatform != TargetPlatform.iOS) {
       return;
     }
-    if (!_listening) {
-      _listening = true;
-      channel.setMethodCallHandler((call) async {
-        if (call.method == 'transportChanged') {
-          await onTransportChanged?.call();
-        }
-      });
-    }
+    installTransportListener();
     try {
       await channel.invokeMethod<void>('prepare');
     } on PlatformException catch (error) {

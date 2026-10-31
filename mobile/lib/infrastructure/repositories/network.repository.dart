@@ -25,8 +25,10 @@ class NetworkRepository {
 
   static Future<void> _initialize() async {
     if (Platform.isIOS) {
-      TailnetSession.onTransportChanged = () => _refreshQueue.run(_initialize, refresh: true);
-      await TailnetSession.prepare();
+      if (TailnetSession.isRootIsolate) {
+        TailnetSession.onTransportChanged = () => _refreshQueue.run(_initialize, refresh: true);
+        await TailnetSession.prepare();
+      }
     }
     final clientPointer = Pointer<Void>.fromAddress(await networkApi.getClientPointer());
     if (Platform.isIOS) {
@@ -38,7 +40,9 @@ class NetworkRepository {
         await TailnetSession.releaseClientPointer(clientPointer.address);
       }
       if (clientPointer == _clientPointer) {
-        await TailnetSession.confirmClientPointer(clientPointer.address);
+        if (TailnetSession.isRootIsolate) {
+          await TailnetSession.confirmClientPointer(clientPointer.address);
+        }
         return;
       }
       final replacement = CupertinoClient.fromSharedSession(session);
@@ -47,7 +51,9 @@ class NetworkRepository {
       _clientPointer = clientPointer;
       _client = replacement;
       previous?.close();
-      await TailnetSession.confirmClientPointer(clientPointer.address);
+      if (TailnetSession.isRootIsolate) {
+        await TailnetSession.confirmClientPointer(clientPointer.address);
+      }
     } else {
       if (clientPointer == _clientPointer) {
         return;
@@ -93,7 +99,12 @@ class NetworkRepository {
 /// ApiService and uploads can retain this object across a native session change.
 class _CurrentSessionClient extends http.BaseClient {
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) => NetworkRepository._client!.send(request);
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Background isolates cannot receive transport-change events. Reacquire
+    // the current native session at each request boundary.
+    if (!TailnetSession.isRootIsolate) await NetworkRepository.init();
+    return NetworkRepository._client!.send(request);
+  }
 
   @override
   void close() {} // The native session's lifetime is managed by NetworkRepository.
