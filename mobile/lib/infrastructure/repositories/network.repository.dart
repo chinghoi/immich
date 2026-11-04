@@ -102,7 +102,9 @@ class _CurrentSessionClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     // Background isolates cannot receive transport-change events. Reacquire
     // the current native session at each request boundary.
-    if (!TailnetSession.isRootIsolate) await NetworkRepository.init();
+    if (!TailnetSession.isRootIsolate) {
+      await NetworkRepository.init();
+    }
     return NetworkRepository._client!.send(request);
   }
 

@@ -16,7 +16,9 @@ class EmbeddedNetworkSession {
 
   @visibleForTesting
   static void installTransportListener() {
-    if (!isRootIsolate || _listening) return;
+    if (!isRootIsolate || _listening) {
+      return;
+    }
     channel.setMethodCallHandler((call) async {
       if (call.method == 'transportChanged') {
         await onTransportChanged?.call();
