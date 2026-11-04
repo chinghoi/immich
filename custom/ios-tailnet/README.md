@@ -1,6 +1,8 @@
-# Immich iOS 内嵌 Tailscale 定制版
+# Immich iOS 内嵌网络定制版
 
-此 fork 只增加 iOS 入口。它把 `libtailscale` 编入 Immich 进程，使用用户态网络和经过认证的本机 SOCKS5 代理，不创建系统 VPN、NetworkExtension、Packet Tunnel 或 Funnel。Android、服务端、Web 不增加功能。定制版最低 iOS 18.1，与所固定的 TailscaleKit framework 部署目标一致。
+新增的独立 EasyTier 模块、三模式切换、凭据与地址约束见 [EasyTier 集成说明](../ios-easytier/README.md)。原有 Tailscale 身份和上游接入点保持兼容。以下原始 Tailscale 设计与历史安装说明不代表当前 Apple 团队状态；签名材料仅留在 Mac，CI 始终输出 unsigned。
+
+此 fork 只增加 iOS 入口，可选择普通连接、内嵌 Tailscale 或内嵌 EasyTier。两个 SDK 使用进程内用户态网络及本机代理，互斥运行，不创建系统 VPN、NetworkExtension、Packet Tunnel 或 Funnel。Android、服务端、Web 不增加功能。定制版最低 iOS 18.1。
 
 ## 上游与改动边界
 
@@ -9,7 +11,9 @@
 
 | 位置 | 作用 |
 | --- | --- |
-| `mobile/ios/Tailnet/Sources/TailnetPlugin.swift` | 节点、授权、身份目录、退出、重连、网络切换、有限后台任务、Flutter 薄桥接 |
+| `mobile/ios/Tailnet/Sources/TailnetPlugin.swift` | 兼容桥接、共享代理、网络变化与有限后台任务 |
+| `EmbeddedNetworkController.swift`、各 Provider | 互斥生命周期、独立 SDK、身份与就绪等待 |
+| `mobile/ios/EasyTierCore/`、`custom/ios-easytier/` | 独立 EasyTier 二进制依赖、锁定构建与协议验证 |
 | `mobile/ios/Runner/Core/URLSessionManager.swift` | 唯一的原生会话配置边界，保留官方 Cookie、证书、请求头处理 |
 | `mobile/ios/Runner/AppDelegate.swift` | 把官方 API/图片会话、下载器、视频层接到同一策略 |
 | `mobile/lib/infrastructure/repositories/network.repository.dart` | 共享客户端的稳定转发引用，原生会话更换时业务对象不用重建 |
@@ -92,23 +96,17 @@ Actions 的 `Tailnet iOS` 使用标准 `xcode-27` Arm64 托管 runner，固定�
 
 公开 fork 的 scheduled workflows 默认可能未启用；公开仓库 60 天无活动也可能自动停用。维护者每月检查 Actions 的最近成功时间，若停用则在 Actions 启用 `Tailnet upstream maintenance` 并手动 Run workflow。正常代码提交不会保证已停用的 cron 自动复活，不用空提交伪造活动。Actions 的“允许创建 PR”仓库设置若禁用，候选创建会失败并在运行中显示，需要仓库管理员开启相应权限；不在源码内存 PAT 绕过。
 
-## 普通 Apple ID 的实际安装路径
+## 本机签名与安装
 
-当前只有普通 Apple ID，没有付费开发者会员。本任务不默认使用 TestFlight、App Store Connect，也不发布公共 App Store。**无签名 IPA 不是可直接安装的 App。** 模拟器 App 也不能安装到 iPhone。
+GitHub Actions 只生成 unsigned 设备 IPA 和模拟器包；模拟器包不能安装到 iPhone。证书私钥、P12、密码及设备描述文件不上传 GitHub、不进入 Actions Secrets 或构建制品。签名使用 Mac 钥匙串中的既有身份，最终设备 IPA 才下载到 Mac 处理。
 
-可用路径是：云端生成设备 IPA，再交给已有的 AltStore/SideStore 或可信的轻量侧载工具，用自己的 Apple ID 重新签名、生成设备 Profile 并安装。它们不需要用户下载项目源码、Flutter 或完整 Xcode SDK；首次建立设备配对/安装引导通常仍需要实体设备连接一台电脑，纯 GitHub 托管机不能直接访问 USB 手机。如果手机已经安装可用的 SideStore，可以在手机“文件”中导入 IPA。
+本定制版沿用 `com.test.immich`、`com.test.immich.ShareExtension`、`com.test.immich.Widget` 与 `group.com.test.immich`。签名前同时验证主 App、两个扩展、App Group、Profile 的证书/设备/有效期及 entitlement；框架、扩展和主 App 分别签名，最后验证深层严格签名、IPA 内容及哈希。升级沿用同一组标识和可用材料；不因增加内嵌网络模块而创建系统 VPN 扩展或申请新的网络扩展权限。
 
-普通账号的开发签名通常 7 天过期，每台设备同时最多 3 个此类 App，7 天最多 10 个 App ID；安装工具自身和扩展也会影响额度。需要及时重新签名/刷新。重签时须处理本 App 及嵌入 framework/扩展的 Bundle ID、App Group 和 Profile，一次成功编译不能证明任意重签工具都能处理这些能力。尚未在用户的普通 Apple ID 和真机上验证，不保证免操作或永久免费常驻。
-
-SideStore 安装/刷新本身使用本机 VPN；这与 Immich 运行时的 Tailscale 隧道是两件事。若连安装/刷新也绝对不能占用 VPN，可用需要电脑配对的 AltServer/Sideloadly 类工具；只需轻量安装工具和 IPA，不需要项目或 SDK。不能把侧载工具的安装条件说成 App 本身已经解决。
-
-最少还需在安装阶段确认：手机 iOS 版本、已可用的重签/安装工具、设备配对方式，以及家中 Immich 的版本。不要把 Apple ID 密码、二次验证码、tailnet auth key 或证书私钥发到聊天或仓库。
-
-若未来自备可用签名材料，CI 才可增加独立签名 job：用 GitHub Secrets 存 P12、P12 密码、设备 provisioning profile、Team ID、自己的 Bundle/App Group ID，导入临时 keychain，验证 Profile 与设备/entitlements，再签名嵌入项和 App；日志不输出材料，结束即删除临时 keychain。不因普通账号限制而购买会员或开付费资源。
+安装页仅在每次获准的临时分发期间开放，使用新的随机路径和 HTTPS 链接；用户确认安装后关闭隧道。旧 Quick Tunnel 地址不可当作永久下载地址。签名有效期取决于实际证书和 Profile；重新签同一份 Profile 不会延长其原有到期日。真机安装、网络授权、SDK 挂起恢复和蜂窝网络吞吐仍须在设备上验证。
 
 ## 服务端兼容与真机验收
 
-优先安装与家中服务端相同稳定版本的 App。当前基线是 v3.3.5；家中版本未知，不应直接替用户决定升级。官方 `getVersionCompatibilityMessage` 的主版本粗检查仍保留，但通过该检查不代表每个跨版本功能都兼容，升级前还要查看上游 Release notes。此仓库和 Actions 从不升级家中服务端。
+优先安装与家中服务端相同稳定版本的 App。当前基线是 v3.3.5；发布前应核对实际服务端版本，服务端升级独立评估。官方 `getVersionCompatibilityMessage` 的主版本粗检查仍保留，但通过该检查不代表每个跨版本功能都兼容，升级前还要查看上游 Release notes。此仓库和 Actions 从不升级家中服务端。
 
 最终验收还需要用户安装后：完成真实网页授权；验证 tailnet ACL；分别在 Wi-Fi/蜂窝网络登录、浏览缩略图/原图、拖动长视频、上传和下载；切换网络、锁屏、离开 App、杀进程再打开；确认节点身份不重复、后台状态清楚，取消/失败后数据不误标成功。iOS 真机的挂起、锁屏和系统任务预算无法靠模拟器证明。
 

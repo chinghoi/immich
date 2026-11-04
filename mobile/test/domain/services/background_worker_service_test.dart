@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/data/data_controller.dart';
@@ -14,6 +15,7 @@ import 'package:immich_mobile/domain/services/background_worker.service.dart';
 import 'package:immich_mobile/domain/services/hash.service.dart';
 import 'package:immich_mobile/domain/services/local_sync.service.dart';
 import 'package:immich_mobile/domain/services/sync_stream.service.dart';
+import 'package:immich_mobile/embedded_network/embedded_network_session.dart';
 import 'package:immich_mobile/infrastructure/repositories/settings.repository.dart';
 import 'package:immich_mobile/providers/infrastructure/sync.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
@@ -37,10 +39,15 @@ void main() {
   late MockSyncStreamService mockRemoteSyncService;
   late MockBackgroundUploadService mockBackgroundUploadService;
   late Drift db;
+  var embeddedNetworkEnabled = false;
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmbeddedNetworkSession.channel,
+      (call) async => call.method == 'enabled' ? embeddedNetworkEnabled : null,
+    );
 
     db = Drift(drift.DatabaseConnection(NativeDatabase.memory(), closeStreamsSynchronously: true));
     await SettingsRepository.ensureInitialized(db);
@@ -48,11 +55,15 @@ void main() {
   });
 
   tearDownAll(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmbeddedNetworkSession.channel, null,
+    );
     debugDefaultTargetPlatformOverride = null;
     await db.close();
   });
 
   setUp(() {
+    embeddedNetworkEnabled = false;
     final mockLocalSyncService = MockLocalSyncService();
     final mockHashService = MockHashService();
     final mockUserService = MockUserService();
@@ -82,6 +93,14 @@ void main() {
   });
 
   group('onIosUpload', () {
+    test('embedded network mode does not start system background uploads', () async {
+      embeddedNetworkEnabled = true;
+      when(() => mockRemoteSyncService.sync()).thenAnswer((_) async => true);
+      await sut.onIosUpload(true, 20);
+      verifyNever(() => mockBackgroundUploadService.uploadBackupCandidates(any()));
+      verifyNever(() => mockBackgroundUploadService.resume());
+    });
+
     test('lists a new batch only after the remote sync finished', () async {
       final remoteSync = Completer<bool>();
       when(() => mockRemoteSyncService.sync()).thenAnswer((_) => remoteSync.future);

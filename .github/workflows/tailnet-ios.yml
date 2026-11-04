@@ -23,6 +23,10 @@ jobs:
           sw_vers
           xcodebuild -version
           ls /Applications | sort
+      - name: Verify public build contains no owner subscription
+        run: python3 custom/ios-easytier/test-privacy.py
+      - name: Test exclusive provider switching and failure recovery
+        run: bash custom/ios-easytier/test-selector.sh
       - name: Go toolchain (matches pinned libtailscale go.mod)
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
@@ -33,7 +37,7 @@ jobs:
         id: framework-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks
+          path: mobile/ios/Tailnet/Frameworks/TailscaleKit.xcframework
           key: tailnet-${{ runner.os }}-${{ runner.arch }}-xcode27.1-${{ hashFiles('custom/ios-tailnet/dependencies.json', 'custom/ios-tailnet/build-framework.sh', 'custom/ios-tailnet/patches/libtailscale-*.patch') }}
       - name: Build pinned TailscaleKit for device and simulator
         if: steps.framework-cache.outputs.cache-hit != 'true'
@@ -44,8 +48,48 @@ jobs:
         if: steps.framework-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          path: mobile/ios/Tailnet/Frameworks
+          path: mobile/ios/Tailnet/Frameworks/TailscaleKit.xcframework
           key: ${{ steps.framework-cache.outputs.cache-primary-key }}
+      - name: Restore EasyTier framework cache
+        id: easytier-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
+          key: easytier-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock', 'custom/ios-easytier/core/rust-toolchain.toml', 'custom/ios-easytier/core/src/**', 'custom/ios-easytier/include/**', 'custom/ios-easytier/build-framework.sh', 'custom/ios-easytier/patch-tcp-policy.py') }}
+      - name: Restore EasyTier compiler cache
+        id: easytier-rust-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            custom/ios-easytier/core/target
+          key: easytier-rust-${{ runner.os }}-${{ runner.arch }}-1.99.1-${{ hashFiles('custom/ios-easytier/core/Cargo.toml', 'custom/ios-easytier/core/Cargo.lock') }}
+          restore-keys: easytier-rust-${{ runner.os }}-${{ runner.arch }}-1.99.1-
+      - name: Build pinned EasyTier no-TUN core
+        if: steps.easytier-cache.outputs.cache-hit != 'true'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          export PATH="$HOME/.cargo/bin:$PATH"
+          brew list protobuf >/dev/null 2>&1 || brew install protobuf
+          bash custom/ios-easytier/build-framework.sh
+      - name: Save EasyTier compiler cache
+        if: always() && steps.easytier-rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            custom/ios-easytier/core/target
+          key: ${{ steps.easytier-rust-cache.outputs.cache-primary-key }}
+      - name: Save EasyTier framework cache
+        if: steps.easytier-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: mobile/ios/EasyTierCore/Frameworks/ImmichEasyTier.xcframework
+          key: ${{ steps.easytier-cache.outputs.cache-primary-key }}
+      - name: Verify native EasyTier C ABI and simulator linkage
+        run: bash custom/ios-easytier/test-native-link.sh
       - name: Setup official mobile tool versions
         uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8
         with:
@@ -62,22 +106,58 @@ jobs:
       - name: Analyze transport and run regression tests
         working-directory: mobile
         run: |
-          dart analyze lib/tailnet lib/infrastructure/repositories/network.repository.dart
-          flutter test test/tailnet
+          dart format lib/embedded_network lib/tailnet test/tailnet lib/widgets/common/immich_sliver_app_bar.dart
+          set -o pipefail
+          dart analyze lib/tailnet lib/embedded_network lib/infrastructure/repositories/network.repository.dart lib/widgets/common/immich_sliver_app_bar.dart 2>&1 | tee "$RUNNER_TEMP/tailnet-analysis.log"
+          flutter test test/tailnet --dart-define=NETWORK_UI_PREVIEWS=true
+      - name: Upload network settings previews
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-ui-previews
+          path: mobile/build/network-previews/*.png
+          retention-days: 7
+      - name: Upload transport analysis log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-analysis
+          path: ${{ runner.temp }}/tailnet-analysis.log
+          retention-days: 7
+      - name: Upload normalized transport sources and Rust dependency lock
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-reviewed-sources
+          path: |
+            mobile/lib/embedded_network
+            mobile/lib/tailnet
+            mobile/test/tailnet
+            mobile/lib/widgets/common/immich_sliver_app_bar.dart
+            custom/ios-easytier/core/Cargo.lock
+            custom/ios-easytier/core/src/lib.rs
+          retention-days: 7
       - name: Protocol integration on iOS simulator (disposable tailnet)
         timeout-minutes: 20
         run: bash custom/ios-tailnet/test-simulator.sh
       - name: Build simulator app (no signing)
         id: simulator-build
-        if: always() && steps.mobile-dependencies.outcome == 'success'
+        if: ${{ !cancelled() && steps.mobile-dependencies.outcome == 'success' }}
         working-directory: mobile
         run: |
           set -o pipefail
           python3 ../custom/ios-tailnet/patch-dependencies.py
           flutter build ios --simulator --debug --no-codesign 2>&1 | tee "$RUNNER_TEMP/tailnet-simulator.log"
+      - name: Upload simulator build log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: embedded-network-simulator-build
+          path: ${{ runner.temp }}/tailnet-simulator.log
+          retention-days: 7
       - name: Build device app (unsigned, cannot install directly)
         id: device-build
-        if: always() && steps.mobile-dependencies.outcome == 'success'
+        if: ${{ !cancelled() && steps.mobile-dependencies.outcome == 'success' }}
         working-directory: mobile
         run: |
           set -o pipefail
